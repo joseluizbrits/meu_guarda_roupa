@@ -1,4 +1,4 @@
-# [Nome da Startup] — Reinventando o Consumo de Moda por Assinatura
+# Meu Guarda-roupa — Reinventando o Consumo de Moda por Assinatura
 
 *Documento de fase inicial — visão de negócio*
 
