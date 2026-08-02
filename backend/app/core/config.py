@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     )
 
     minio_endpoint: str = "localhost:9000"
+    # Host embedded in presigned upload/download URLs — these are handed
+    # directly to the mobile app / browser, which can't resolve the internal
+    # Docker hostname "minio", so this must be a host the client can reach
+    # (same reasoning as EXPO_PUBLIC_API_URL). Defaults to minio_endpoint's
+    # value for non-Docker local dev where both are the same host.
+    minio_public_endpoint: str = "localhost:9000"
     minio_access_key: str = "minioadmin"
     minio_secret_key: str = "minioadmin"
     minio_bucket: str = "meu-guarda-roupa"

@@ -34,10 +34,15 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      # Dev-only permissive CORS so a browser (expo start --web) can PUT/GET
+      # presigned URLs directly — tighten to an explicit origin before prod.
+      MINIO_API_CORS_ALLOW_ORIGIN: "*"
     volumes:
       - minio_data:/data
     networks:
       - default
+    ports:
+      - "9000:9000"
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 5s
@@ -54,6 +59,10 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       MINIO_ENDPOINT: minio:9000
+      # Presigned URLs are handed to the mobile app / browser, which can't
+      # resolve the internal Docker hostname "minio" — they need a host
+      # reachable from the phone/LAN, same reasoning as EXPO_PUBLIC_API_URL.
+      MINIO_PUBLIC_ENDPOINT: 192.168.0.36:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
     depends_on:

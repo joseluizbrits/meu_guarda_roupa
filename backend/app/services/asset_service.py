@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.storage import s3_client
+from app.core.storage import generate_presigned_url
 from app.models.asset import Asset
 from app.models.user import User
 
@@ -34,14 +34,14 @@ async def create_upload_url(
     await db.commit()
     await db.refresh(asset)
 
-    upload_url = s3_client.generate_presigned_url(
+    upload_url = generate_presigned_url(
         "put_object",
-        Params={
+        {
             "Bucket": settings.minio_bucket,
             "Key": storage_key,
             "ContentType": content_type,
         },
-        ExpiresIn=_PRESIGNED_URL_EXPIRES_IN,
+        _PRESIGNED_URL_EXPIRES_IN,
     )
 
     return asset, upload_url, _PRESIGNED_URL_EXPIRES_IN
@@ -58,8 +58,8 @@ async def get_download_url(db: AsyncSession, asset_id: uuid.UUID) -> str | None:
     if asset is None:
         return None
 
-    return s3_client.generate_presigned_url(
+    return generate_presigned_url(
         "get_object",
-        Params={"Bucket": settings.minio_bucket, "Key": asset.storage_key},
-        ExpiresIn=_PRESIGNED_URL_EXPIRES_IN,
+        {"Bucket": settings.minio_bucket, "Key": asset.storage_key},
+        _PRESIGNED_URL_EXPIRES_IN,
     )
