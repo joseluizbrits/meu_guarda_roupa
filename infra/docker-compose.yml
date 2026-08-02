@@ -64,6 +64,8 @@ services:
     networks:
       - default
       - traefik_proxy
+    ports:
+      - "8000:8000"
     labels:
       traefik.enable: "true"
       traefik.docker.network: traefik_proxy
