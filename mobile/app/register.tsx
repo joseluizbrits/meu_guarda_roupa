@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
-import { Link, Stack, router } from 'expo-router';
+import { Link, Stack } from 'expo-router';
 
 import { Text, View } from '@/components/Themed';
 import { Button } from '@/src/components/atoms/Button';
@@ -22,7 +22,9 @@ export default function RegisterScreen() {
     setSubmitting(true);
     try {
       await register(email.trim(), password, fullName.trim());
-      router.replace('/(tabs)');
+      // No manual navigation here — the root layout's Stack.Protected
+      // guards react to `isAuthenticated` and redirect to `(tabs)` or
+      // `/onboarding` once it also knows whether onboarding is complete.
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
     } finally {

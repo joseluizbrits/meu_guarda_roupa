@@ -3,11 +3,13 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { ActivityIndicator } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
 import { View } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAuthStore } from '@/src/core/auth/authStore';
+import { useOnboardingStatus } from '@/src/features/onboarding/useOnboardingStatus';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -42,7 +44,11 @@ export default function RootLayout() {
     return null;
   }
 
-  return <RootLayoutNav />;
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <RootLayoutNav />
+    </GestureHandlerRootView>
+  );
 }
 
 function RootLayoutNav() {
@@ -50,12 +56,17 @@ function RootLayoutNav() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const isLoading = useAuthStore((state) => state.isLoading);
   const hydrate = useAuthStore((state) => state.hydrate);
+  // Extends the auth gate below: once authenticated, also wait to learn
+  // whether the user still needs to go through onboarding.
+  const onboardingStatus = useOnboardingStatus(isAuthenticated);
 
   useEffect(() => {
     hydrate();
   }, [hydrate]);
 
-  if (isLoading) {
+  const waitingOnOnboardingCheck = isAuthenticated && onboardingStatus === 'unknown';
+
+  if (isLoading || waitingOnOnboardingCheck) {
     return (
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -65,12 +76,18 @@ function RootLayoutNav() {
     );
   }
 
+  const isOnboarded = isAuthenticated && onboardingStatus === 'complete';
+  const needsOnboarding = isAuthenticated && onboardingStatus === 'incomplete';
+
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack>
-        <Stack.Protected guard={isAuthenticated}>
+        <Stack.Protected guard={isOnboarded}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+        </Stack.Protected>
+        <Stack.Protected guard={needsOnboarding}>
+          <Stack.Screen name="onboarding" options={{ headerShown: false }} />
         </Stack.Protected>
         <Stack.Protected guard={!isAuthenticated}>
           <Stack.Screen name="login" options={{ headerShown: false }} />

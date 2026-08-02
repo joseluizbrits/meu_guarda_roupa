@@ -9,6 +9,10 @@ dist/
 web-build/
 expo-env.d.ts
 
+# react-native-skia web CanvasKit runtime — copied from node_modules by the
+# postinstall script, not source; committing an 8MB binary isn't worth it.
+/public/canvaskit.wasm
+
 # Native
 .kotlin/
 *.orig.*
