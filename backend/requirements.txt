@@ -4,3 +4,7 @@ sqlalchemy[asyncio]
 asyncpg
 alembic
 pydantic-settings
+passlib[bcrypt]
+bcrypt<4.1  # pin: passlib 1.7.4 is incompatible with bcrypt>=4.1's dropped __about__ attr
+pyjwt
+email-validator

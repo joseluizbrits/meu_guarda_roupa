@@ -10,6 +10,9 @@ from alembic import context
 from app.core.config import settings
 from app.db.base import Base
 
+# Import all ORM models so they register on Base.metadata for autogenerate.
+import app.models  # noqa: F401,E402
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config

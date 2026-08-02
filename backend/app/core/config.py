@@ -18,5 +18,12 @@ class Settings(BaseSettings):
     minio_access_key: str = "minioadmin"
     minio_secret_key: str = "minioadmin"
 
+    # JWT signing key. The default below is dev-only so local runs don't
+    # crash without a `.env` — always override via env var in staging/prod.
+    jwt_secret_key: str = "dev-only-insecure-secret-change-me"
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 30
+    refresh_token_expire_days: int = 30
+
 
 settings = Settings()
