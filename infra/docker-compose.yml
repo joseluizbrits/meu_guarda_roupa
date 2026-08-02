@@ -16,8 +16,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    networks:
+      - default
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
@@ -36,9 +36,8 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     volumes:
       - minio_data:/data
-    ports:
-      - "9000:9000"
-      - "9001:9001"
+    networks:
+      - default
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 5s
@@ -62,14 +61,26 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-    ports:
-      - "8000:8000"
+    networks:
+      - default
+      - traefik_proxy
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: traefik_proxy
+      traefik.http.routers.guardaroupa-backend.entrypoints: web
+      traefik.http.routers.guardaroupa-backend.rule: Host(`api.guardaroupa.localhost`)
+      traefik.http.services.guardaroupa-backend.loadbalancer.server.port: "8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
+
+networks:
+  default:
+  traefik_proxy:
+    external: true
 
 volumes:
   postgres_data:
