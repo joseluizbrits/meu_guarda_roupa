@@ -1,3 +1,9 @@
+# Explicit project name — do NOT remove. This host runs multiple unrelated
+# compose projects; without this, Compose derives the project name from the
+# directory basename ("infra"), which collides with other projects also
+# named "infra" and can recreate/overwrite their containers and volumes.
+name: meu-guarda-roupa
+
 services:
   postgres:
     image: postgres:16-alpine
