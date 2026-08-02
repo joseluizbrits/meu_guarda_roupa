@@ -21,11 +21,11 @@ const FIELDS: { key: FieldKey; label: string }[] = [
 
 type FormValues = Record<FieldKey, string>;
 
-// Pre-filled with the same adult-average reference values the procedural
-// avatar is scaled against (see REFERENCE_MEASUREMENTS in proceduralBody.ts)
-// — the 3D model doesn't need to be body-accurate yet, the current focus is
-// showing how garments combine, so defaults let testers skip past this step
-// instead of typing 6 numbers. Still editable/required like before.
+// Pre-filled with reasonable adult-average defaults — the 3D avatar (a
+// rigged model, see Avatar3DView) doesn't apply these to body scaling yet,
+// the current focus is showing how garments combine, so defaults let
+// testers skip past this step instead of typing 6 numbers. Still
+// editable/required like before.
 const DEFAULT_VALUES: FormValues = {
   height_cm: '170',
   chest_cm: '90',

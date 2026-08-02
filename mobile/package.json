@@ -6,6 +6,7 @@
     "@shopify/react-native-skia": "2.6.2",
     "@types/three": "^0.166.0",
     "expo": "~57.0.9",
+    "expo-asset": "~57.0.8",
     "expo-camera": "~57.0.3",
     "expo-constants": "~57.0.8",
     "expo-dev-client": "~57.0.10",
