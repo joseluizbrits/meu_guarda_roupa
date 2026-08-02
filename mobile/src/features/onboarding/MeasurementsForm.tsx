@@ -21,13 +21,18 @@ const FIELDS: { key: FieldKey; label: string }[] = [
 
 type FormValues = Record<FieldKey, string>;
 
-const EMPTY_VALUES: FormValues = {
-  height_cm: '',
-  chest_cm: '',
-  waist_cm: '',
-  hip_cm: '',
-  shoulder_cm: '',
-  inseam_cm: '',
+// Pre-filled with the same adult-average reference values the procedural
+// avatar is scaled against (see REFERENCE_MEASUREMENTS in proceduralBody.ts)
+// — the 3D model doesn't need to be body-accurate yet, the current focus is
+// showing how garments combine, so defaults let testers skip past this step
+// instead of typing 6 numbers. Still editable/required like before.
+const DEFAULT_VALUES: FormValues = {
+  height_cm: '170',
+  chest_cm: '90',
+  waist_cm: '75',
+  hip_cm: '95',
+  shoulder_cm: '45',
+  inseam_cm: '80',
 };
 
 function parseMeasurements(values: FormValues): Measurements | null {
@@ -48,7 +53,7 @@ function parseMeasurements(values: FormValues): Measurements | null {
  * upserts), so a user revisiting this step just overwrites their values.
  */
 export function MeasurementsForm() {
-  const [values, setValues] = useState<FormValues>(EMPTY_VALUES);
+  const [values, setValues] = useState<FormValues>(DEFAULT_VALUES);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
