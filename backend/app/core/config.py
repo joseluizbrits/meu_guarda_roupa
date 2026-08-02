@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     minio_endpoint: str = "localhost:9000"
     minio_access_key: str = "minioadmin"
     minio_secret_key: str = "minioadmin"
+    minio_bucket: str = "meu-guarda-roupa"
 
     # JWT signing key. The default below is dev-only so local runs don't
     # crash without a `.env` — always override via env var in staging/prod.

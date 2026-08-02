@@ -1,10 +1,21 @@
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import router as api_v1_router
 from app.core.config import settings
+from app.core.storage import ensure_bucket_exists
 
-app = FastAPI(title="Meu Guarda-roupa API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    ensure_bucket_exists()
+    yield
+
+
+app = FastAPI(title="Meu Guarda-roupa API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
