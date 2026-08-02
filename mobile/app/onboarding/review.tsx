@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, StyleSheet } from 'react-native';
 import { Stack, router } from 'expo-router';
 
@@ -11,6 +11,7 @@ import { getMeasurements } from '@/src/core/api/measurements';
 import { compositeToTexture } from '@/src/features/avatar/faceTexture/compositeToTexture';
 import { readUriBytes } from '@/src/features/avatar/faceTexture/readUriBytes';
 import { useCapturedPhotoStore } from '@/src/features/onboarding/capturedPhotoStore';
+import { useOnboardingStatusStore } from '@/src/features/onboarding/onboardingStatusStore';
 
 /**
  * Onboarding step 3 — composites the raw capture into the circular face
@@ -26,9 +27,19 @@ export default function ReviewScreen() {
   const [compositing, setCompositing] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // `handleConfirm` clears the captured photo on success right before
+  // navigating to `(tabs)`. That clear flips `photoUri` to null, which would
+  // otherwise re-trigger the "no photo, go capture one" effect below and
+  // race it against the success navigation — sending the user back to
+  // face-capture immediately after a successful save. This ref lets that
+  // effect tell the two cases apart.
+  const confirmedSuccessfully = useRef(false);
 
   useEffect(() => {
     if (!photoUri) {
+      if (confirmedSuccessfully.current) {
+        return;
+      }
       // Nothing captured (e.g. deep-linked or refreshed straight into this
       // screen) — send the user back to capture a photo first.
       router.replace('/onboarding/face-capture');
@@ -89,6 +100,12 @@ export default function ReviewScreen() {
         face_texture_asset_id: asset_id,
       });
 
+      confirmedSuccessfully.current = true;
+      // The root layout's route guard only checked onboarding status once,
+      // right after login — it has no other way to learn onboarding just
+      // finished in this same session, so it would otherwise keep routing
+      // here instead of `(tabs)`.
+      useOnboardingStatusStore.getState().markComplete();
       clearPhoto();
       router.replace('/(tabs)');
     } catch (err) {

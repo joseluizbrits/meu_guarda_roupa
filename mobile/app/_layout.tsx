@@ -9,7 +9,7 @@ import 'react-native-reanimated';
 import { View } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAuthStore } from '@/src/core/auth/authStore';
-import { useOnboardingStatus } from '@/src/features/onboarding/useOnboardingStatus';
+import { useOnboardingStatusStore } from '@/src/features/onboarding/onboardingStatusStore';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -57,12 +57,24 @@ function RootLayoutNav() {
   const isLoading = useAuthStore((state) => state.isLoading);
   const hydrate = useAuthStore((state) => state.hydrate);
   // Extends the auth gate below: once authenticated, also wait to learn
-  // whether the user still needs to go through onboarding.
-  const onboardingStatus = useOnboardingStatus(isAuthenticated);
+  // whether the user still needs to go through onboarding. The onboarding
+  // flow itself calls `markComplete()` directly when it finishes, so this
+  // doesn't need to re-run on anything other than login/logout.
+  const onboardingStatus = useOnboardingStatusStore((state) => state.status);
+  const checkOnboarding = useOnboardingStatusStore((state) => state.check);
+  const resetOnboarding = useOnboardingStatusStore((state) => state.reset);
 
   useEffect(() => {
     hydrate();
   }, [hydrate]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      checkOnboarding();
+    } else {
+      resetOnboarding();
+    }
+  }, [isAuthenticated, checkOnboarding, resetOnboarding]);
 
   const waitingOnOnboardingCheck = isAuthenticated && onboardingStatus === 'unknown';
 
