@@ -39,7 +39,12 @@ function normalizeSourceUri(sourceUri: string): string {
 async function loadSkia() {
   if (Platform.OS === 'web') {
     const { LoadSkiaWeb } = await import('@shopify/react-native-skia/lib/module/web');
-    await LoadSkiaWeb();
+    // Without `locateFile`, CanvasKit fetches canvaskit.wasm relative to the
+    // current route (e.g. from `/onboarding/review` it requests
+    // `/onboarding/canvaskit.wasm`, a 404) instead of the site root where
+    // `public/canvaskit.wasm` is actually served. Force an absolute path so
+    // this works regardless of how deep the current route is.
+    await LoadSkiaWeb({ locateFile: (file) => `/${file}` });
   }
   return import('@shopify/react-native-skia');
 }
