@@ -25,5 +25,11 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 30
 
+    # Regex of allowed browser origins for CORS. The Expo web dev server
+    # runs on a local port (8081 by default, but configurable via --port),
+    # so this matches any localhost/127.0.0.1 port rather than one fixed
+    # value. Tighten this to an explicit allowlist before shipping to prod.
+    cors_origin_regex: str = r"^http://(localhost|127\.0\.0\.1):\d+$"
+
 
 settings = Settings()
