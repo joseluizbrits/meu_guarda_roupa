@@ -126,10 +126,14 @@ async function segmentWithU2Net(imageUri: string): Promise<SegmentationResult | 
     }
 
     return { maskUri, width: sourceWidth, height: sourceHeight };
-  } catch {
+  } catch (error) {
     // Segmentation is a best-effort enhancement — any failure (model load,
     // decode, inference) falls back to the raw photo, same as a `null`
-    // return. See `segmentationEngine.ts`'s doc comment.
+    // return. See `segmentationEngine.ts`'s doc comment. Logged (not
+    // swallowed silently) so a real failure on-device is diagnosable from
+    // Metro/adb logs instead of just "background wasn't removed, unclear
+    // why".
+    console.warn('[tfliteSegmentationEngine] segmentation failed, falling back to raw photo:', error);
     return null;
   }
 }

@@ -59,6 +59,9 @@ export default function TagGarmentScreen() {
     (async () => {
       try {
         const segmentation = await tfliteSegmentationEngine.segment(photoUri);
+        if (!segmentation) {
+          console.warn('[tag] segmentation engine returned null — no mask, falling back to raw photo');
+        }
         if (!segmentation || cancelled) {
           return;
         }
@@ -66,9 +69,11 @@ export default function TagGarmentScreen() {
         if (!cancelled) {
           setCutoutUri(uri);
         }
-      } catch {
+      } catch (error) {
         // Best-effort — leave `cutoutUri` null and fall back to the raw
-        // photo, both for the preview and at confirm time below.
+        // photo, both for the preview and at confirm time below. Logged so
+        // a real on-device failure is diagnosable instead of silent.
+        console.warn('[tag] cutout extraction failed, falling back to raw photo:', error);
       } finally {
         if (!cancelled) {
           setSegmenting(false);
