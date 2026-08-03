@@ -97,6 +97,7 @@ function RootLayoutNav() {
         <Stack.Protected guard={isOnboarded}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="wardrobe" options={{ headerShown: false }} />
         </Stack.Protected>
         <Stack.Protected guard={needsOnboarding}>
           <Stack.Screen name="onboarding" options={{ headerShown: false }} />

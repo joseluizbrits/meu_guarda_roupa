@@ -49,6 +49,37 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="closet"
+        options={{
+          title: 'Closet',
+          tabBarIcon: ({ color }) => (
+            <SymbolView
+              name={{
+                ios: 'tshirt',
+                android: 'checkroom',
+                web: 'checkroom',
+              }}
+              tintColor={color}
+              size={28}
+            />
+          ),
+          headerRight: () => (
+            <Link href="/wardrobe/capture" asChild>
+              <Pressable accessibilityLabel="Add garment" style={{ marginRight: 15 }}>
+                {({ pressed }) => (
+                  <SymbolView
+                    name={{ ios: 'plus.circle', android: 'add_circle', web: 'add_circle' }}
+                    size={25}
+                    tintColor={Colors[colorScheme].text}
+                    style={{ opacity: pressed ? 0.5 : 1 }}
+                  />
+                )}
+              </Pressable>
+            </Link>
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="two"
         options={{
           title: 'Profile',
