@@ -95,7 +95,15 @@ async function rawFetch(path: string, options: ApiRequestOptions, accessToken?: 
   const response = await fetch(`${BASE_URL ?? ''}${path}`, {
     method,
     headers,
-    credentials: 'include',
+    // Native has no use for cookies at all (Bearer header only) — 'omit'
+    // stops it from ever storing/resending the auth cookies the backend
+    // also sets on login/refresh (see auth_service.set_auth_cookies),
+    // which native's own HTTP stack may otherwise persist regardless of
+    // this being a JS-level `fetch` call. Left present without a CSRF
+    // header, that stray cookie would trip the backend's CSRF middleware
+    // on every mutating native request — belt-and-suspenders alongside
+    // that middleware also exempting any request with a Bearer header.
+    credentials: isWeb ? 'include' : 'omit',
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
   });
 
@@ -150,9 +158,15 @@ async function refreshAccessToken(): Promise<string | null> {
         return null;
       }
 
+      // Always a real JSON object, even when there's nothing to put in it
+      // (web) — an empty/missing body makes FastAPI reject the request
+      // before RefreshRequest's own all-optional fields ever come into
+      // play ("body: Field required"), which is different from and would
+      // mask the actual "no refresh token available" 401 from
+      // auth_service.refresh.
       const { response, data } = await rawFetch('/api/v1/auth/refresh', {
         method: 'POST',
-        body: storedRefreshToken ? { refresh_token: storedRefreshToken } : undefined,
+        body: { refresh_token: storedRefreshToken },
         auth: false,
       });
 
