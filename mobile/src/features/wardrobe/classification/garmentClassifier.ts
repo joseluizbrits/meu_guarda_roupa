@@ -51,7 +51,25 @@ const GARMENT_LABEL_KEYWORDS = [
   'cap',
   'scarf',
   'glove',
+  // A real garment photo (fabric filling most of the frame — a common
+  // shot for a shirt lying flat/hung close-up) can come back from ML Kit
+  // with NO label more specific than this: e.g. a real "top" photo this
+  // session returned only `Textile (0.77)`, `Pattern (0.74)`. Without
+  // these, the gate wrongly skipped segmentation on an actual garment.
+  'textile',
+  'pattern',
 ];
+
+// A keyword match above can still be wrong for a specific, previously-seen
+// case: a pillow photo matched 'textile' via `Textile`/`Cushion` labels.
+// Rather than dropping 'textile' again (breaking the real garment case
+// above), this overrides the match back to "not a garment" only when one
+// of these more specific non-garment nouns is also present. Deliberately
+// narrow — broader environment words (asphalt, road, soil...) are NOT
+// here: a real "shorts photographed outdoors" garment photo this session
+// legitimately included `Asphalt`/`Sand`, so excluding on those would
+// reintroduce the same class of bug this is meant to fix.
+const NON_GARMENT_OVERRIDE_KEYWORDS = ['pillow', 'cushion'];
 
 // Below this, ML Kit's own top label is too unsure to trust either way —
 // treated the same as "couldn't classify" (fail open, let segmentation run).
@@ -93,11 +111,14 @@ export async function classifyGarmentPhoto(imageUri: string): Promise<GarmentCla
       return null;
     }
 
-    const isLikelyGarment = labels.some(
-      (label) =>
-        label.confidence >= MIN_CONFIDENCE &&
-        GARMENT_LABEL_KEYWORDS.some((keyword) => label.text.toLowerCase().includes(keyword))
-    );
+    const matchesKeyword = (keywords: string[]) =>
+      labels.some(
+        (label) =>
+          label.confidence >= MIN_CONFIDENCE && keywords.some((keyword) => label.text.toLowerCase().includes(keyword))
+      );
+
+    const isLikelyGarment =
+      matchesKeyword(GARMENT_LABEL_KEYWORDS) && !matchesKeyword(NON_GARMENT_OVERRIDE_KEYWORDS);
 
     return { isLikelyGarment, topLabel: top.text, confidence: top.confidence, rawLabels };
   } catch (error) {
