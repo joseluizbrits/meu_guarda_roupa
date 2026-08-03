@@ -111,7 +111,11 @@ export default function WardrobeItemScreen() {
           </View>
         ) : (
           <>
-            <Image source={{ uri: item.texture_url ?? item.photo_url }} style={styles.photo} resizeMode="contain" />
+            <Image
+              source={{ uri: item.ai_photo_url ?? item.texture_url ?? item.photo_url }}
+              style={styles.photo}
+              resizeMode="contain"
+            />
 
             <Text style={styles.label}>Category</Text>
             <CategoryPicker value={item.category} onChange={handleRecategorize} disabled={savingCategory} />

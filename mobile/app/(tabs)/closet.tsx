@@ -108,7 +108,7 @@ export default function ClosetScreen() {
               accessibilityRole="button"
               accessibilityLabel={`${item.category} item`}>
               <Image
-                source={{ uri: item.texture_url ?? item.photo_url }}
+                source={{ uri: item.ai_photo_url ?? item.texture_url ?? item.photo_url }}
                 style={styles.thumbnail}
                 resizeMode="contain"
               />

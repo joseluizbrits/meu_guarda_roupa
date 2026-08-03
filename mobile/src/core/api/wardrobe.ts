@@ -9,6 +9,11 @@ export type WardrobeItemRead = {
   photo_url: string;
   texture_asset_id: string | null;
   texture_url: string | null;
+  // Populated asynchronously by the backend (an OpenAI clean-product-photo
+  // edit of the raw photo) — may still be null right after creation, or
+  // forever if OPENAI_API_KEY isn't configured server-side.
+  ai_photo_asset_id: string | null;
+  ai_photo_url: string | null;
   created_at: string;
   updated_at: string;
 };
