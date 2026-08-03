@@ -42,8 +42,6 @@ const GARMENT_LABEL_KEYWORDS = [
   'nightwear',
   'sleeve',
   'collar',
-  'textile',
-  'fashion',
   'footwear',
   'shoe',
   'sneaker',
