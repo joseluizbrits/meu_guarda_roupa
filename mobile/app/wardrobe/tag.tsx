@@ -9,7 +9,7 @@ import { CategoryPicker } from '@/src/components/molecules/CategoryPicker';
 import { requestUploadUrl, uploadToPresignedUrl } from '@/src/core/api/assets';
 import { createWardrobeItem, setWardrobeItemTexture, WardrobeCategory } from '@/src/core/api/wardrobe';
 import { readUriBytes } from '@/src/features/avatar/faceTexture/readUriBytes';
-import { classifyGarmentPhoto } from '@/src/features/wardrobe/classification/garmentClassifier';
+import { classifyGarmentPhoto, type GarmentClassification } from '@/src/features/wardrobe/classification/garmentClassifier';
 import { useCapturedGarmentPhotoStore } from '@/src/features/wardrobe/capturedGarmentPhotoStore';
 import { extractGarmentCutout } from '@/src/features/wardrobe/segmentation/extractGarmentCutout';
 import { tfliteSegmentationEngine } from '@/src/features/wardrobe/segmentation/tfliteSegmentationEngine';
@@ -38,6 +38,7 @@ export default function TagGarmentScreen() {
   const [segmenting, setSegmenting] = useState(false);
   const [cutoutUri, setCutoutUri] = useState<string | null>(null);
   const [notGarmentWarning, setNotGarmentWarning] = useState<string | null>(null);
+  const [classification, setClassification] = useState<GarmentClassification | null>(null);
   // Same trick as `app/onboarding/review.tsx`: `clearPhoto()` on success
   // flips `photoUri` to null right before navigating away, which would
   // otherwise race the "no photo, go capture one" redirect below.
@@ -58,6 +59,7 @@ export default function TagGarmentScreen() {
     let cancelled = false;
     setCutoutUri(null);
     setNotGarmentWarning(null);
+    setClassification(null);
     setSegmenting(true);
     (async () => {
       try {
@@ -66,13 +68,14 @@ export default function TagGarmentScreen() {
         // isn't clothing at all. `null` (web, low confidence, or a failed
         // classification) fails open — segmentation still runs, same as
         // before this gate existed.
-        const classification = await classifyGarmentPhoto(photoUri);
+        const result = await classifyGarmentPhoto(photoUri);
         if (cancelled) {
           return;
         }
-        if (classification && !classification.isLikelyGarment) {
+        setClassification(result);
+        if (result && !result.isLikelyGarment) {
           setNotGarmentWarning(
-            `This looks like "${classification.topLabel}", not a clothing item — background removal was skipped.`
+            `This looks like "${result.topLabel}", not a clothing item — background removal was skipped.`
           );
           return;
         }
@@ -114,7 +117,19 @@ export default function TagGarmentScreen() {
       const bytes = await readUriBytes(photoUri);
       const { asset_id, upload_url } = await requestUploadUrl('garment_photo', contentType);
       await uploadToPresignedUrl(upload_url, bytes, contentType);
-      const item = await createWardrobeItem({ category, photo_asset_id: asset_id });
+      const item = await createWardrobeItem({
+        category,
+        photo_asset_id: asset_id,
+        ml_analysis: classification
+          ? {
+              raw_labels: classification.rawLabels,
+              is_likely_garment: classification.isLikelyGarment,
+              top_label: classification.topLabel,
+              top_confidence: classification.confidence,
+              segmentation_succeeded: cutoutUri !== null,
+            }
+          : undefined,
+      });
 
       // The cutout is a nice-to-have, never a save blocker: any failure
       // here just leaves the item saved with its raw photo only, exactly

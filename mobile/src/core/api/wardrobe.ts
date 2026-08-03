@@ -13,9 +13,23 @@ export type WardrobeItemRead = {
   updated_at: string;
 };
 
+/**
+ * On-device ML classifier output for the tagged photo, sent alongside item
+ * creation so it's kept for retraining/tuning the pipeline later — never
+ * surfaced to the user (see `garmentClassifier.ts`).
+ */
+export type GarmentMlAnalysisPayload = {
+  raw_labels: { text: string; confidence: number }[];
+  is_likely_garment: boolean | null;
+  top_label: string | null;
+  top_confidence: number | null;
+  segmentation_succeeded: boolean;
+};
+
 export type CreateWardrobeItemPayload = {
   category: WardrobeCategory;
   photo_asset_id: string;
+  ml_analysis?: GarmentMlAnalysisPayload;
 };
 
 export type UpdateWardrobeItemPayload = {

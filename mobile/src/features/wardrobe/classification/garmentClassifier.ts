@@ -61,6 +61,10 @@ export type GarmentClassification = {
   isLikelyGarment: boolean;
   topLabel: string;
   confidence: number;
+  // Full ML Kit output (not just the label(s) the gate acted on) — kept so
+  // callers can persist it for retraining/tuning later, per
+  // `GarmentMlAnalysisPayload` in `core/api/wardrobe.ts`.
+  rawLabels: { text: string; confidence: number }[];
 };
 
 /**
@@ -82,6 +86,8 @@ export async function classifyGarmentPhoto(imageUri: string): Promise<GarmentCla
       return null;
     }
 
+    const rawLabels = labels.map((label) => ({ text: label.text, confidence: label.confidence }));
+
     const top = labels.reduce((best, label) => (label.confidence > best.confidence ? label : best));
     if (top.confidence < MIN_CONFIDENCE) {
       return null;
@@ -93,7 +99,7 @@ export async function classifyGarmentPhoto(imageUri: string): Promise<GarmentCla
         GARMENT_LABEL_KEYWORDS.some((keyword) => label.text.toLowerCase().includes(keyword))
     );
 
-    return { isLikelyGarment, topLabel: top.text, confidence: top.confidence };
+    return { isLikelyGarment, topLabel: top.text, confidence: top.confidence, rawLabels };
   } catch (error) {
     console.warn('[garmentClassifier] classification failed:', error);
     return null;
