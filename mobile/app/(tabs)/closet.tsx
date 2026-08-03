@@ -1,24 +1,34 @@
-import { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, Pressable, StyleSheet } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { ActivityIndicator, FlatList, Image, Pressable, StyleSheet, useWindowDimensions } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 
 import { Text, View } from '@/components/Themed';
 import { Button } from '@/src/components/atoms/Button';
 import { ErrorText } from '@/src/components/atoms/ErrorText';
-import { listWardrobeItems, WardrobeItemRead } from '@/src/core/api/wardrobe';
+import { CategoryPicker } from '@/src/components/molecules/CategoryPicker';
+import { listWardrobeItems, WardrobeCategory, WardrobeItemRead } from '@/src/core/api/wardrobe';
 
-const NUM_COLUMNS = 3;
+// Target cell width, not a fixed column count — a fixed count (e.g. always
+// 3 columns) looks fine on a phone but produces huge tiles on a wider
+// browser window (each column just stretches to fill the extra space).
+// Deriving the column count from the viewport keeps cells roughly this
+// size regardless of screen width.
+const IDEAL_CELL_WIDTH = 130;
+const MIN_COLUMNS = 2;
 const GRID_GAP = 8;
 
 /**
- * "Closet" tab — a grid of the user's photographed garments. Refetches on
- * every focus (rather than a store) so it always reflects items added/edited/
- * deleted by the capture and detail flows without extra state-management
- * machinery.
+ * "Closet" tab — a grid of the user's photographed garments, filterable by
+ * category. Refetches on every focus (rather than a store) so it always
+ * reflects items added/edited/deleted by the capture and detail flows
+ * without extra state-management machinery.
  */
 export default function ClosetScreen() {
   const [items, setItems] = useState<WardrobeItemRead[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<WardrobeCategory | null>(null);
+  const { width } = useWindowDimensions();
+  const numColumns = Math.max(MIN_COLUMNS, Math.floor(width / IDEAL_CELL_WIDTH));
 
   useFocusEffect(
     useCallback(() => {
@@ -40,6 +50,13 @@ export default function ClosetScreen() {
       };
     }, [])
   );
+
+  const filteredItems = useMemo(() => {
+    if (!items) {
+      return items;
+    }
+    return filter ? items.filter((item) => item.category === filter) : items;
+  }, [items, filter]);
 
   if (error) {
     return (
@@ -69,21 +86,32 @@ export default function ClosetScreen() {
 
   return (
     <View style={styles.container}>
-      <FlatList
-        data={items}
-        keyExtractor={(item) => item.id}
-        numColumns={NUM_COLUMNS}
-        contentContainerStyle={styles.gridContent}
-        renderItem={({ item }) => (
-          <Pressable
-            style={styles.cell}
-            onPress={() => router.push(`/wardrobe/${item.id}`)}
-            accessibilityRole="button"
-            accessibilityLabel={`${item.category} item`}>
-            <Image source={{ uri: item.photo_url }} style={styles.thumbnail} />
-          </Pressable>
-        )}
-      />
+      <View style={styles.filterBar}>
+        <CategoryPicker value={filter} onChange={setFilter} allowAll />
+      </View>
+
+      {filteredItems && filteredItems.length === 0 ? (
+        <View style={styles.center}>
+          <Text style={styles.emptySubtitle}>No items in this category.</Text>
+        </View>
+      ) : (
+        <FlatList
+          key={numColumns}
+          data={filteredItems ?? []}
+          keyExtractor={(item) => item.id}
+          numColumns={numColumns}
+          contentContainerStyle={styles.gridContent}
+          renderItem={({ item }) => (
+            <Pressable
+              style={[styles.cell, { width: `${100 / numColumns}%` }]}
+              onPress={() => router.push(`/wardrobe/${item.id}`)}
+              accessibilityRole="button"
+              accessibilityLabel={`${item.category} item`}>
+              <Image source={{ uri: item.photo_url }} style={styles.thumbnail} />
+            </Pressable>
+          )}
+        />
+      )}
     </View>
   );
 }
@@ -110,6 +138,11 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     textAlign: 'center',
   },
+  filterBar: {
+    paddingHorizontal: GRID_GAP * 2,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
   gridContent: {
     padding: GRID_GAP / 2,
   },
@@ -117,7 +150,6 @@ const styles = StyleSheet.create({
     // Percentage width + inner padding (rather than `flex` + a row gap)
     // keeps each row exactly the container's width — no risk of the last
     // column overflowing.
-    width: `${100 / NUM_COLUMNS}%`,
     padding: GRID_GAP / 2,
   },
   thumbnail: {

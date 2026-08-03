@@ -16,22 +16,29 @@ const CATEGORIES: { value: WardrobeCategory; label: string }[] = [
 
 type CategoryPickerProps = {
   value: WardrobeCategory | null;
-  onChange: (category: WardrobeCategory) => void;
+  onChange: (category: WardrobeCategory | null) => void;
   disabled?: boolean;
+  /**
+   * Prepends an "All" chip mapped to `null` — for filtering (the closet
+   * grid), where "show everything" is a valid state, unlike tagging a new
+   * item (`app/wardrobe/tag.tsx`), which always needs one real category.
+   */
+  allowAll?: boolean;
 };
 
 /** A row of selectable chips for the 6 wardrobe-item categories. Dumb — the caller owns the selected value. */
-export function CategoryPicker({ value, onChange, disabled }: CategoryPickerProps) {
+export function CategoryPicker({ value, onChange, disabled, allowAll }: CategoryPickerProps) {
   const colorScheme = useColorScheme();
   const tint = Colors[colorScheme].tint;
+  const options = allowAll ? [{ value: null, label: 'All' }, ...CATEGORIES] : CATEGORIES;
 
   return (
     <View style={styles.wrap} lightColor="transparent" darkColor="transparent">
-      {CATEGORIES.map((category) => {
+      {options.map((category) => {
         const selected = category.value === value;
         return (
           <Pressable
-            key={category.value}
+            key={category.value ?? 'all'}
             accessibilityRole="button"
             accessibilityState={{ selected, disabled }}
             disabled={disabled}

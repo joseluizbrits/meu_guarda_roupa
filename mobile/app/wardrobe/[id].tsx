@@ -62,8 +62,12 @@ export default function WardrobeItemScreen() {
     }, [id])
   );
 
-  async function handleRecategorize(category: WardrobeItemRead['category']) {
-    if (!item || category === item.category) {
+  async function handleRecategorize(category: WardrobeItemRead['category'] | null) {
+    // `category` is only ever `null` when `CategoryPicker`'s `allowAll` is
+    // set (it isn't here) — this screen always re-tags to one real
+    // category, never "no category", but the shared component's `onChange`
+    // type covers both callers.
+    if (!item || category === null || category === item.category) {
       return;
     }
     setSaveError(null);
