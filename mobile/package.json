@@ -3,6 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "dependencies": {
+    "@react-native-ml-kit/image-labeling": "^2.0.0",
     "@shopify/react-native-skia": "2.6.2",
     "@types/three": "^0.166.0",
     "expo": "~57.0.9",

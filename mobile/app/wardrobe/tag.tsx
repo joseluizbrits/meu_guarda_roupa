@@ -9,6 +9,7 @@ import { CategoryPicker } from '@/src/components/molecules/CategoryPicker';
 import { requestUploadUrl, uploadToPresignedUrl } from '@/src/core/api/assets';
 import { createWardrobeItem, setWardrobeItemTexture, WardrobeCategory } from '@/src/core/api/wardrobe';
 import { readUriBytes } from '@/src/features/avatar/faceTexture/readUriBytes';
+import { classifyGarmentPhoto } from '@/src/features/wardrobe/classification/garmentClassifier';
 import { useCapturedGarmentPhotoStore } from '@/src/features/wardrobe/capturedGarmentPhotoStore';
 import { extractGarmentCutout } from '@/src/features/wardrobe/segmentation/extractGarmentCutout';
 import { tfliteSegmentationEngine } from '@/src/features/wardrobe/segmentation/tfliteSegmentationEngine';
@@ -36,6 +37,7 @@ export default function TagGarmentScreen() {
   const [error, setError] = useState<string | null>(null);
   const [segmenting, setSegmenting] = useState(false);
   const [cutoutUri, setCutoutUri] = useState<string | null>(null);
+  const [notGarmentWarning, setNotGarmentWarning] = useState<string | null>(null);
   // Same trick as `app/onboarding/review.tsx`: `clearPhoto()` on success
   // flips `photoUri` to null right before navigating away, which would
   // otherwise race the "no photo, go capture one" redirect below.
@@ -55,9 +57,26 @@ export default function TagGarmentScreen() {
     }
     let cancelled = false;
     setCutoutUri(null);
+    setNotGarmentWarning(null);
     setSegmenting(true);
     (async () => {
       try {
+        // Cheap gate before the expensive (44MB model) segmentation step:
+        // skip it entirely if ML Kit's generic labeler is confident this
+        // isn't clothing at all. `null` (web, low confidence, or a failed
+        // classification) fails open — segmentation still runs, same as
+        // before this gate existed.
+        const classification = await classifyGarmentPhoto(photoUri);
+        if (cancelled) {
+          return;
+        }
+        if (classification && !classification.isLikelyGarment) {
+          setNotGarmentWarning(
+            `This looks like "${classification.topLabel}", not a clothing item — background removal was skipped.`
+          );
+          return;
+        }
+
         const segmentation = await tfliteSegmentationEngine.segment(photoUri);
         if (!segmentation) {
           console.warn('[tag] segmentation engine returned null — no mask, falling back to raw photo');
@@ -149,6 +168,8 @@ export default function TagGarmentScreen() {
           ) : null}
         </View>
 
+        {notGarmentWarning ? <Text style={styles.notGarmentWarning}>{notGarmentWarning}</Text> : null}
+
         <CategoryPicker value={category} onChange={setCategory} disabled={saving} />
 
         {error ? <ErrorText style={styles.error}>{error}</ErrorText> : null}
@@ -212,6 +233,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   error: {
+    marginBottom: 16,
+  },
+  notGarmentWarning: {
+    fontSize: 13,
+    opacity: 0.7,
+    textAlign: 'center',
     marginBottom: 16,
   },
   retake: {
