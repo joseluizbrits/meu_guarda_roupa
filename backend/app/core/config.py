@@ -35,8 +35,18 @@ class Settings(BaseSettings):
     # Regex of allowed browser origins for CORS. The Expo web dev server
     # runs on a local port (8081 by default, but configurable via --port),
     # so this matches any localhost/127.0.0.1 port rather than one fixed
-    # value. Tighten this to an explicit allowlist before shipping to prod.
-    cors_origin_regex: str = r"^http://(localhost|127\.0\.0\.1):\d+$"
+    # value. Also allows private-network IPs (192.168.x.x, 10.x.x.x,
+    # 172.16-31.x.x) on any port — testing from a phone browser over WiFi
+    # loads the page via the dev machine's LAN IP, so the browser's Origin
+    # header is that LAN IP, not localhost. Tighten this to an explicit
+    # allowlist before shipping to prod.
+    cors_origin_regex: str = (
+        r"^http://(localhost|127\.0\.0\.1"
+        r"|192\.168\.\d{1,3}\.\d{1,3}"
+        r"|10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+        r"|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"
+        r"):\d+$"
+    )
 
 
 settings = Settings()
