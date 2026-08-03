@@ -174,7 +174,7 @@ export default function TagGarmentScreen() {
         <Text style={styles.subtitle}>Pick a category for this item.</Text>
 
         <View style={styles.previewWrapper}>
-          <Image source={{ uri: cutoutUri ?? photoUri }} style={styles.preview} />
+          <Image source={{ uri: cutoutUri ?? photoUri }} style={styles.preview} resizeMode="contain" />
           {segmenting ? (
             <View style={styles.segmentingBadge}>
               <ActivityIndicator size="small" />

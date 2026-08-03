@@ -107,7 +107,11 @@ export default function ClosetScreen() {
               onPress={() => router.push(`/wardrobe/${item.id}`)}
               accessibilityRole="button"
               accessibilityLabel={`${item.category} item`}>
-              <Image source={{ uri: item.texture_url ?? item.photo_url }} style={styles.thumbnail} />
+              <Image
+                source={{ uri: item.texture_url ?? item.photo_url }}
+                style={styles.thumbnail}
+                resizeMode="contain"
+              />
             </Pressable>
           )}
         />
