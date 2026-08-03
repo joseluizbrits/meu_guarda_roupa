@@ -43,7 +43,13 @@
           "recordAudioAndroid": false
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Meu Guarda-roupa to access your photos to add garments from your gallery."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

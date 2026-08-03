@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as ImagePicker from 'expo-image-picker';
 import { Stack, router } from 'expo-router';
 
 import { Text, View } from '@/components/Themed';
@@ -17,10 +18,14 @@ const CONTENT_TYPE_BY_FORMAT: Record<string, string> = {
  * Garment capture — a plain full-frame photo of an item the user owns.
  * Unlike `app/onboarding/face-capture.tsx` there's no alignment guide: the
  * whole point is just to get a usable reference photo of the garment.
+ * Also offers picking an existing photo from the device's gallery, since a
+ * user may already have photos of items they own rather than the item
+ * itself in hand to photograph right now.
  */
 export default function GarmentCaptureScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [capturing, setCapturing] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cameraRef = useRef<CameraView>(null);
   const setPhoto = useCapturedGarmentPhotoStore((state) => state.setPhoto);
@@ -46,6 +51,31 @@ export default function GarmentCaptureScreen() {
     }
   }
 
+  async function handlePickFromGallery() {
+    if (picking) {
+      return;
+    }
+    setError(null);
+    setPicking(true);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.9,
+      });
+      if (result.canceled) {
+        return;
+      }
+      const asset = result.assets[0];
+      const contentType = asset.mimeType ?? 'image/jpeg';
+      setPhoto(asset.uri, asset.width, asset.height, contentType);
+      router.push('/wardrobe/tag');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not pick a photo. Please try again.');
+    } finally {
+      setPicking(false);
+    }
+  }
+
   if (!permission) {
     return (
       <View style={styles.center}>
@@ -62,6 +92,14 @@ export default function GarmentCaptureScreen() {
           <Text style={styles.title}>Camera access needed</Text>
           <Text style={styles.subtitle}>We use your camera to photograph items for your wardrobe.</Text>
           <Button title="Grant camera access" onPress={requestPermission} />
+          {error ? <ErrorText style={styles.error}>{error}</ErrorText> : null}
+          <View style={styles.galleryFallback}>
+            <Button
+              title={picking ? 'Opening gallery...' : 'Choose from gallery instead'}
+              onPress={handlePickFromGallery}
+              loading={picking}
+            />
+          </View>
         </View>
       </>
     );
@@ -77,6 +115,14 @@ export default function GarmentCaptureScreen() {
 
         <View style={styles.controls}>
           <Button title={capturing ? 'Capturing...' : 'Capture'} onPress={handleCapture} loading={capturing} />
+          <View style={styles.galleryButton}>
+            <Button
+              title={picking ? 'Opening gallery...' : 'Choose from gallery'}
+              onPress={handlePickFromGallery}
+              loading={picking}
+              disabled={capturing}
+            />
+          </View>
         </View>
       </View>
     </>
@@ -114,5 +160,12 @@ const styles = StyleSheet.create({
   },
   controls: {
     padding: 24,
+  },
+  galleryButton: {
+    marginTop: 12,
+  },
+  galleryFallback: {
+    marginTop: 16,
+    width: '100%',
   },
 });
