@@ -1,19 +1,34 @@
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Image, StyleSheet } from 'react-native';
 import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { File, Paths } from 'expo-file-system';
 
 import { Text, View } from '@/components/Themed';
 import { Button } from '@/src/components/atoms/Button';
 import { ErrorText } from '@/src/components/atoms/ErrorText';
 import { CategoryPicker } from '@/src/components/molecules/CategoryPicker';
+import { requestUploadUrl, uploadToPresignedUrl } from '@/src/core/api/assets';
 import { ApiError } from '@/src/core/api/client';
-import { deleteWardrobeItem, getWardrobeItem, updateWardrobeItem, WardrobeItemRead } from '@/src/core/api/wardrobe';
+import {
+  deleteWardrobeItem,
+  getWardrobeItem,
+  setWardrobeItemTexture,
+  updateWardrobeItem,
+  WardrobeItemRead,
+} from '@/src/core/api/wardrobe';
+import { readUriBytes } from '@/src/features/avatar/faceTexture/readUriBytes';
+import { extractGarmentCutout } from '@/src/features/wardrobe/segmentation/extractGarmentCutout';
+import { tfliteSegmentationEngine } from '@/src/features/wardrobe/segmentation/tfliteSegmentationEngine';
 
 /**
  * Garment detail — a larger view of the photo plus re-tag (category picker,
- * saved immediately on change) and delete (behind a simple inline confirm —
- * `Alert.alert` is a no-op on react-native-web, so a native `Alert` here
- * wouldn't actually confirm anything when running on web).
+ * saved immediately on change), reprocess (re-run on-device background
+ * removal against the original raw photo — kept in storage forever
+ * precisely so this is always possible, see `photo_asset_id`'s own storage
+ * key convention — and replace the current cutout with the result), and
+ * delete (behind a simple inline confirm — `Alert.alert` is a no-op on
+ * react-native-web, so a native `Alert` here wouldn't actually confirm
+ * anything when running on web).
  */
 export default function WardrobeItemScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -26,6 +41,8 @@ export default function WardrobeItemScreen() {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [reprocessing, setReprocessing] = useState(false);
+  const [reprocessError, setReprocessError] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -82,6 +99,41 @@ export default function WardrobeItemScreen() {
     }
   }
 
+  /**
+   * Re-runs on-device background removal against the item's original raw
+   * photo (`photo_url` — the untouched capture, never overwritten by a
+   * previous segmentation attempt) and replaces the current cutout with
+   * the result. Skips the "is this even a garment?" classifier gate
+   * `tag.tsx` uses on first capture — pointless here: the item already has
+   * a real, user-picked category, so that heuristic has nothing useful to
+   * add and could only ever get in the way of an explicit retry.
+   */
+  async function handleReprocess() {
+    if (!item) {
+      return;
+    }
+    setReprocessError(null);
+    setReprocessing(true);
+    try {
+      const rawPhoto = await File.downloadFileAsync(item.photo_url, Paths.cache, { idempotent: true });
+      const segmentation = await tfliteSegmentationEngine.segment(rawPhoto.uri);
+      if (!segmentation) {
+        setReprocessError('Could not remove the background on this device.');
+        return;
+      }
+      const cutoutUri = await extractGarmentCutout(rawPhoto.uri, segmentation.maskUri);
+      const textureBytes = await readUriBytes(cutoutUri);
+      const textureUpload = await requestUploadUrl('garment_texture', 'image/png');
+      await uploadToPresignedUrl(textureUpload.upload_url, textureBytes, 'image/png');
+      const updated = await setWardrobeItemTexture(item.id, textureUpload.asset_id);
+      setItem(updated);
+    } catch (err) {
+      setReprocessError(err instanceof Error ? err.message : 'Could not reprocess this item.');
+    } finally {
+      setReprocessing(false);
+    }
+  }
+
   async function handleDelete() {
     if (!item) {
       return;
@@ -116,6 +168,16 @@ export default function WardrobeItemScreen() {
               style={styles.photo}
               resizeMode="contain"
             />
+
+            <View style={styles.reprocessSection}>
+              <Button
+                title={reprocessing ? 'Reprocessing...' : 'Reprocess background removal'}
+                onPress={handleReprocess}
+                loading={reprocessing}
+                disabled={reprocessing}
+              />
+              {reprocessError ? <ErrorText style={styles.error}>{reprocessError}</ErrorText> : null}
+            </View>
 
             <Text style={styles.label}>Category</Text>
             <CategoryPicker value={item.category} onChange={handleRecategorize} disabled={savingCategory} />
@@ -177,6 +239,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 24,
     backgroundColor: 'rgba(0,0,0,0.05)',
+  },
+  reprocessSection: {
+    width: '100%',
+    marginBottom: 20,
   },
   label: {
     fontSize: 14,
