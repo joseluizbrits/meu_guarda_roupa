@@ -2,7 +2,7 @@ import uuid
 from typing import AsyncGenerator
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,13 +24,17 @@ _oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=
 
 
 async def get_current_user(
+    request: Request,
     token: str | None = Depends(_oauth2_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    """Extract and validate a Bearer access token, then load the user.
+    """Extract and validate an access token, then load the user.
 
-    401 on any failure: missing header, bad signature, expired, wrong
-    `type` claim, or the user no longer exists.
+    Checked in order: the `Authorization: Bearer` header (native — see
+    `tokenStorage.ts`), then an `access_token` cookie (web — see
+    `auth_service.set_auth_cookies`). 401 on any failure: missing
+    token, bad signature, expired, wrong `type` claim, or the user no
+    longer exists.
     """
     unauthorized = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -38,6 +42,8 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
 
+    if token is None:
+        token = request.cookies.get("access_token")
     if token is None:
         raise unauthorized
 

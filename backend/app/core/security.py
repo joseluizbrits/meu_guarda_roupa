@@ -1,5 +1,6 @@
 """Password hashing and JWT create/decode helpers."""
 
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
@@ -46,6 +47,12 @@ def create_refresh_token(subject: str) -> str:
         "refresh",
         timedelta(days=settings.refresh_token_expire_days),
     )
+
+
+def generate_csrf_token() -> str:
+    """A random token for the double-submit CSRF cookie pattern — see
+    `app/main.py`'s `csrf_protection` middleware."""
+    return secrets.token_urlsafe(32)
 
 
 def decode_token(token: str) -> dict[str, Any]:

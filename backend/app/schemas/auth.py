@@ -9,7 +9,10 @@ class LoginRequest(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    # `None` on web — the refresh token lives in an httpOnly cookie there,
+    # never touched by JS; native sends it explicitly (from
+    # `expo-secure-store`). See `auth_service.refresh`.
+    refresh_token: str | None = None
 
 
 class TokenResponse(BaseModel):
