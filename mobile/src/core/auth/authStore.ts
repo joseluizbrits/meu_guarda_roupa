@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { create } from 'zustand';
 
 import { api, onSessionExpired } from '@/src/core/api/client';
@@ -70,13 +71,22 @@ export const useAuthStore = create<AuthState>((set) => ({
   hydrate: async () => {
     set({ isLoading: true });
     try {
-      const accessToken = await tokenStorage.getAccessToken();
-      if (!accessToken) {
-        set({ user: null, isAuthenticated: false, isLoading: false });
-        return;
+      // Native only: skip the network round-trip when there's provably no
+      // stored access token. Web can't do this check at all anymore — the
+      // token lives in an httpOnly cookie (tokenStorage's web reads always
+      // return null now, on purpose, see tokenStorage.ts) — so on web this
+      // has to just attempt the request every time and let the cookie (or
+      // lack of one) answer the question; skipping it here was the actual
+      // bug behind "refreshing the page loses the session".
+      if (Platform.OS !== 'web') {
+        const accessToken = await tokenStorage.getAccessToken();
+        if (!accessToken) {
+          set({ user: null, isAuthenticated: false, isLoading: false });
+          return;
+        }
       }
 
-      // The stored access token may have expired — apiRequest's own
+      // The access token may have expired — apiRequest's own
       // refresh-and-retry logic handles that transparently.
       const user = await api.get<User>('/api/v1/users/me');
       set({ user, isAuthenticated: true, isLoading: false });
