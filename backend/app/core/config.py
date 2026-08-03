@@ -53,5 +53,12 @@ class Settings(BaseSettings):
         r"):\d+$"
     )
 
+    # Empty means the AI clean-product-photo feature (ai_image_service.py)
+    # is off — every wardrobe item just keeps ai_photo_asset_id null
+    # forever, same as a failed on-device segmentation leaves
+    # texture_asset_id null. Never a default value here (unlike
+    # jwt_secret_key) — there's no safe placeholder for a real API key.
+    openai_api_key: str = ""
+
 
 settings = Settings()

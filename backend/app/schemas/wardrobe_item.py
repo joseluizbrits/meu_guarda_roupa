@@ -50,5 +50,9 @@ class WardrobeItemRead(BaseModel):
     photo_url: str
     texture_asset_id: uuid.UUID | None
     texture_url: str | None
+    # Populated asynchronously, may still be null right after creation —
+    # see wardrobe_service._generate_ai_photo.
+    ai_photo_asset_id: uuid.UUID | None
+    ai_photo_url: str | None
     created_at: datetime
     updated_at: datetime

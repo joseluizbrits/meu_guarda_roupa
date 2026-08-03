@@ -9,3 +9,4 @@ bcrypt<4.1  # pin: passlib 1.7.4 is incompatible with bcrypt>=4.1's dropped __ab
 pyjwt
 email-validator
 boto3
+openai

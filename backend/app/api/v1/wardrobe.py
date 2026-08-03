@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
@@ -21,10 +21,11 @@ router = APIRouter(prefix="/wardrobe-items", tags=["wardrobe"])
 )
 async def create_wardrobe_item(
     data: WardrobeItemCreate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> WardrobeItemRead:
-    item = await wardrobe_service.create_item(db, current_user, data)
+    item = await wardrobe_service.create_item(db, current_user, data, background_tasks)
     return await wardrobe_service.to_read(db, item)
 
 

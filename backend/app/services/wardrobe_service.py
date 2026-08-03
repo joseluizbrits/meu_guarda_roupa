@@ -1,11 +1,16 @@
 """CRUD for a user's wardrobe items (a user has many, most-recent-first)."""
 
+import logging
 import uuid
 
-from fastapi import HTTPException, status
+from fastapi import BackgroundTasks, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
+from app.core.storage import s3_client
+from app.db.base import async_session_maker
+from app.models.asset import Asset
 from app.models.garment_ml_analysis import GarmentMlAnalysis
 from app.models.user import User
 from app.models.wardrobe_item import WardrobeItem
@@ -15,11 +20,16 @@ from app.schemas.wardrobe_item import (
     WardrobeItemSetTexture,
     WardrobeItemUpdate,
 )
-from app.services import asset_service
+from app.services import ai_image_service, asset_service
+
+logger = logging.getLogger(__name__)
 
 
 async def create_item(
-    db: AsyncSession, user: User, data: WardrobeItemCreate
+    db: AsyncSession,
+    user: User,
+    data: WardrobeItemCreate,
+    background_tasks: BackgroundTasks,
 ) -> WardrobeItem:
     """Create a wardrobe item for the caller.
 
@@ -49,7 +59,64 @@ async def create_item(
         db.add(analysis)
         await db.commit()
 
+    # Fire-and-forget: runs after the response is sent, so it never slows
+    # down (or can fail) the actual save. See _generate_ai_photo.
+    background_tasks.add_task(_generate_ai_photo, item.id)
+
     return item
+
+
+async def _generate_ai_photo(item_id: uuid.UUID) -> None:
+    """Downloads the item's raw photo, asks OpenAI for a clean product-photo
+    edit of it, and stores the result as a new asset + ai_photo_asset_id.
+
+    Runs as a `BackgroundTasks` job (see `create_item`), so it has no
+    request-scoped DB session to reuse — opens its own. Best-effort: any
+    failure (missing OPENAI_API_KEY, network/API error, storage error) is
+    logged and swallowed, leaving ai_photo_asset_id null, exactly like a
+    failed on-device segmentation leaves texture_asset_id null.
+    """
+    try:
+        async with async_session_maker() as db:
+            item = await db.get(WardrobeItem, item_id)
+            if item is None:
+                return
+
+            photo_asset = await asset_service.get_asset(db, item.photo_asset_id)
+            if photo_asset is None:
+                return
+
+            raw_object = s3_client.get_object(
+                Bucket=settings.minio_bucket, Key=photo_asset.storage_key
+            )
+            raw_bytes = raw_object["Body"].read()
+
+            ai_bytes = ai_image_service.generate_clean_product_photo(raw_bytes)
+            if ai_bytes is None:
+                return
+
+            storage_key = f"garment_ai_photo/{item.user_id}/{uuid.uuid4()}"
+            s3_client.put_object(
+                Bucket=settings.minio_bucket,
+                Key=storage_key,
+                Body=ai_bytes,
+                ContentType="image/png",
+            )
+
+            asset = Asset(
+                kind="garment_ai_photo",
+                storage_key=storage_key,
+                content_type="image/png",
+                owner_user_id=item.user_id,
+            )
+            db.add(asset)
+            await db.commit()
+            await db.refresh(asset)
+
+            item.ai_photo_asset_id = asset.id
+            await db.commit()
+    except Exception:
+        logger.exception("AI clean product photo pipeline failed for item %s", item_id)
 
 
 async def list_items(db: AsyncSession, user: User) -> list[WardrobeItem]:
@@ -142,6 +209,12 @@ async def to_read(db: AsyncSession, item: WardrobeItem) -> WardrobeItemRead:
             db, item.texture_asset_id
         )
 
+    ai_photo_url = None
+    if item.ai_photo_asset_id is not None:
+        ai_photo_url = await asset_service.get_download_url(
+            db, item.ai_photo_asset_id
+        )
+
     return WardrobeItemRead(
         id=item.id,
         category=item.category,
@@ -149,6 +222,8 @@ async def to_read(db: AsyncSession, item: WardrobeItem) -> WardrobeItemRead:
         photo_url=photo_url,
         texture_asset_id=item.texture_asset_id,
         texture_url=texture_url,
+        ai_photo_asset_id=item.ai_photo_asset_id,
+        ai_photo_url=ai_photo_url,
         created_at=item.created_at,
         updated_at=item.updated_at,
     )

@@ -29,6 +29,13 @@ class WardrobeItem(Base):
     texture_asset_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("assets.id"), nullable=True
     )
+    # Populated asynchronously (see wardrobe_service._generate_ai_photo) by
+    # an OpenAI image-edit call on the raw photo — best-effort, stays null
+    # if OPENAI_API_KEY isn't configured or the call fails, same as
+    # texture_asset_id staying null when on-device segmentation fails.
+    ai_photo_asset_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("assets.id"), nullable=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
