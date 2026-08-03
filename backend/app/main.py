@@ -32,14 +32,26 @@ app.add_middleware(
 async def csrf_protection(request: Request, call_next):
     """Double-submit CSRF check for cookie-authenticated requests.
 
-    Only applies when an `access_token` cookie is present — that's the
-    web client (see `auth_service.issue_tokens`/the auth routes, which set
-    it alongside a JS-readable `csrf_token` cookie). Native clients send a
-    Bearer header instead and never carry this cookie, so they're
-    unaffected: a custom header can't be forged cross-site the way an
-    ambient cookie can, so header-only auth doesn't need this check.
+    Only applies when an `access_token` cookie is present AND there's no
+    `Authorization` header — that's the web client (see
+    `auth_service.issue_tokens`/the auth routes, which set the cookie
+    alongside a JS-readable `csrf_token` cookie). The header check matters
+    in practice, not just in theory: native clients authenticate with a
+    Bearer header and set `credentials: 'omit'` (see `client.ts`), but a
+    mobile OS's own HTTP stack can still persist a `Set-Cookie` from a
+    login/refresh response regardless of that JS-level setting — without
+    this check, a native request that happens to carry a stray
+    access_token cookie would get blocked for a CSRF header it was never
+    designed to send. A forged cross-site request can't set a custom
+    Authorization header the way it can rely on an ambient cookie, so any
+    header-authenticated request is exempt either way.
     """
-    if request.method in _CSRF_PROTECTED_METHODS and "access_token" in request.cookies:
+    has_bearer_header = request.headers.get("authorization", "").lower().startswith("bearer ")
+    if (
+        request.method in _CSRF_PROTECTED_METHODS
+        and "access_token" in request.cookies
+        and not has_bearer_header
+    ):
         csrf_cookie = request.cookies.get("csrf_token")
         csrf_header = request.headers.get("x-csrf-token")
         if not csrf_cookie or not csrf_header or csrf_cookie != csrf_header:
