@@ -63,6 +63,28 @@ async function rawFetch(path: string, options: ApiRequestOptions, accessToken?: 
   return { response, data };
 }
 
+// Notifies listeners when a refresh attempt fails (refresh token missing,
+// expired, or rejected) — the session is dead, not just this one request.
+// `client.ts` can't import `authStore` directly (authStore already imports
+// `api` from here), so this is a small pub/sub instead: `authStore`
+// subscribes once and flips `isAuthenticated` back to `false` so the root
+// layout's guard redirects to `/login`. Without this, a failed refresh only
+// clears storage — the store's `isAuthenticated` stays stale `true`, so the
+// app keeps showing protected screens that just keep re-failing.
+type SessionExpiredListener = () => void;
+let sessionExpiredListeners: SessionExpiredListener[] = [];
+
+export function onSessionExpired(listener: SessionExpiredListener): () => void {
+  sessionExpiredListeners.push(listener);
+  return () => {
+    sessionExpiredListeners = sessionExpiredListeners.filter((l) => l !== listener);
+  };
+}
+
+function notifySessionExpired(): void {
+  sessionExpiredListeners.forEach((listener) => listener());
+}
+
 // Concurrent 401s should trigger a single refresh call, not one per
 // in-flight request — later phases (wardrobe, avatar, ...) will fire
 // several authenticated requests at once.
@@ -127,6 +149,7 @@ export async function apiRequest<T = unknown>(path: string, options: ApiRequestO
       ({ response, data } = await rawFetch(path, options, newAccessToken));
     } else {
       await tokenStorage.clearTokens();
+      notifySessionExpired();
     }
   }
 

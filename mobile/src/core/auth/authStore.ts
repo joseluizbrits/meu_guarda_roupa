@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-import { api } from '@/src/core/api/client';
+import { api, onSessionExpired } from '@/src/core/api/client';
 import * as tokenStorage from '@/src/core/auth/tokenStorage';
 
 export type User = {
@@ -76,3 +76,10 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 }));
+
+// `apiRequest` (client.ts) clears storage but has no reference to this
+// store — it fires this event instead so the reactive `isAuthenticated`
+// flag actually flips when a refresh attempt fails, instead of going stale.
+onSessionExpired(() => {
+  useAuthStore.setState({ user: null, isAuthenticated: false });
+});
