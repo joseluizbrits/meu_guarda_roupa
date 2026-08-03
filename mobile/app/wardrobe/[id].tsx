@@ -162,6 +162,13 @@ const styles = StyleSheet.create({
   },
   photo: {
     width: '100%',
+    // Unconstrained, `aspectRatio: 1` scales height to match width — fine
+    // on a phone-width screen, but on a wide desktop browser window the
+    // container has no other limit, so the image grows to fill most of
+    // the viewport. `maxWidth` caps that; `alignSelf: 'center'` keeps it
+    // centered once it's narrower than the container.
+    maxWidth: 480,
+    alignSelf: 'center',
     aspectRatio: 1,
     borderRadius: 12,
     marginBottom: 24,
