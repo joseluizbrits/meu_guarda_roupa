@@ -7,7 +7,11 @@ import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
+import type { WardrobeCategory } from '@/src/core/api/wardrobe';
+import { bindPosePosition, findSkinnedMesh } from './bindPose';
+import { createDecal } from './decal';
 import { readUriBytes } from './faceTexture/readUriBytes';
+import { attachGarmentDecal } from './garmentPlacement';
 
 // Radians of Y-axis rotation per pixel of horizontal drag. Free-spin (no
 // clamping) — simplest behavior and fine for an MVP turntable view.
@@ -32,16 +36,18 @@ const CAMERA_FRAMING_MARGIN = 1.35;
 // hence opposite signs.
 const UPPER_ARM_DROP_RADIANS = THREE.MathUtils.degToRad(58);
 
-// Face decal placement, derived from the GLB's own bind-pose vertex data
-// (the `head`-bone-weighted vertices), not guessed: the head bone's origin
-// sits near the jaw, and its local Z axis already points toward the front
-// of the face (same forward convention as the rest of the rig, verified
-// against the mesh's own geometry). These offsets are in the head bone's
-// local space and center the decal roughly over the nose/eye area, just
-// in front of the sculpted face surface.
+// Face decal placement. Offset from the `head` bone's real bind-pose
+// position (see `bindPose.ts` — the bone object's own live transform can't
+// be used directly), derived from the GLB's own bind-pose data, not
+// guessed: the head bone's origin sits near the jaw, and +Z already points
+// toward the front of the face (same forward convention as the rest of the
+// rig — confirmed independently via the feet: the toes bones sit at a
+// higher bind-pose Z than the feet they're attached to). These offsets
+// center the decal roughly over the nose/eye area, just in front of the
+// sculpted face surface.
 const FACE_DECAL_SIZE = 0.17;
-const FACE_DECAL_LOCAL_OFFSET_Y = 0.02;
-const FACE_DECAL_LOCAL_OFFSET_Z = 0.13;
+const FACE_DECAL_OFFSET_Y = 0.02;
+const FACE_DECAL_OFFSET_Z = 0.13;
 
 type AvatarMeasurements = {
   height_cm: number;
@@ -60,10 +66,14 @@ type Avatar3DViewProps = {
   // real mesh rendering. The model loads at its authored scale.
   measurements: AvatarMeasurements;
   faceTextureUrl?: string | null;
+  // The wardrobe item currently "tried on", if any — rendered as a decal on
+  // the body region matching its category (see `garmentPlacement.ts`).
+  equippedGarment?: { category: WardrobeCategory; textureUrl: string } | null;
 };
 
 /**
- * Loads a remote image URL into a `THREE.Texture`.
+ * Loads a remote image URL into a `THREE.Texture`. Used for both the face
+ * texture and garment textures — neither is treated specially here.
  *
  * - Web: runs in an actual browser (react-native-web), so plain
  *   `THREE.TextureLoader` works as-is — no Expo asset resolution needed.
@@ -71,7 +81,7 @@ type Avatar3DViewProps = {
  *   load a remote URL by itself; `expo-three`'s `TextureLoader` resolves it
  *   through `expo-asset` (download to cache, then decode) instead.
  */
-async function loadFaceTexture(url: string): Promise<THREE.Texture> {
+async function loadTexture(url: string): Promise<THREE.Texture> {
   if (Platform.OS === 'web') {
     return new THREE.TextureLoader().loadAsync(url);
   }
@@ -82,13 +92,13 @@ async function loadFaceTexture(url: string): Promise<THREE.Texture> {
 }
 
 /**
- * Loads the face texture, falling back to `null` on any failure (e.g. a
- * dead URL) so a failed texture load doesn't block rendering the rest of
- * the avatar — it just renders without a face decal.
+ * Loads a texture, falling back to `null` on any failure (e.g. a dead URL)
+ * so a failed load doesn't block rendering the rest of the avatar — it just
+ * renders without that decal.
  */
-async function loadFaceTextureSafe(url: string): Promise<THREE.Texture | null> {
+async function loadTextureSafe(url: string): Promise<THREE.Texture | null> {
   try {
-    return await loadFaceTexture(url);
+    return await loadTexture(url);
   } catch {
     return null;
   }
@@ -141,7 +151,10 @@ function relaxArmsToSides(scene: THREE.Group) {
 }
 
 /**
- * Parents a transparent face-photo decal to the `head` bone.
+ * Adds a transparent face-photo decal, positioned at the `head` bone's real
+ * bind-pose position (see `bindPose.ts`) plus a small forward/up offset —
+ * not parented to the `head` bone object itself, since its own live
+ * transform can't be used for placement.
  *
  * Same technique the old procedural head used (a separate decal plane, not
  * a material slot on the head mesh itself): `compositeToTexture` feathers
@@ -152,24 +165,17 @@ function relaxArmsToSides(scene: THREE.Group) {
  * sculpted face gives it that surface to blend into, the same way a
  * material's own alpha channel wouldn't.
  */
-function attachFaceDecal(scene: THREE.Group, faceTexture: THREE.Texture) {
-  const headBone = scene.getObjectByName('head');
-  if (!headBone) {
+function attachFaceDecal(scene: THREE.Group, mesh: THREE.SkinnedMesh, faceTexture: THREE.Texture) {
+  const headPos = bindPosePosition(mesh, 'head');
+  if (!headPos) {
     return;
   }
-  const decalGeometry = new THREE.PlaneGeometry(FACE_DECAL_SIZE, FACE_DECAL_SIZE);
-  const decalMaterial = new THREE.MeshStandardMaterial({
-    map: faceTexture,
-    transparent: true,
-    roughness: 0.9,
-  });
-  const faceDecal = new THREE.Mesh(decalGeometry, decalMaterial);
+  const faceDecal = createDecal(faceTexture, FACE_DECAL_SIZE, FACE_DECAL_SIZE);
   faceDecal.name = 'faceDecal';
-  // A plane's default normal is +Z, which already matches the head bone's
-  // own local-Z "forward" direction (verified against the GLB's bind-pose
-  // vertex data) — no extra rotation needed.
-  faceDecal.position.set(0, FACE_DECAL_LOCAL_OFFSET_Y, FACE_DECAL_LOCAL_OFFSET_Z);
-  headBone.add(faceDecal);
+  // A plane's default normal is +Z, which already matches this rig's
+  // forward direction — no extra rotation needed.
+  faceDecal.position.set(headPos.x, headPos.y + FACE_DECAL_OFFSET_Y, headPos.z + FACE_DECAL_OFFSET_Z);
+  scene.add(faceDecal);
 }
 
 /**
@@ -184,12 +190,14 @@ function attachFaceDecal(scene: THREE.Group, faceTexture: THREE.Texture) {
  * hand-rolled parallel `<canvas>` + `THREE.WebGLRenderer` web branch would
  * just reimplement what `expo-gl` already provides.
  *
- * Note: `measurements`/`faceTextureUrl` are only read once, when the GL
- * context is first created (`GLView` never re-fires `onContextCreate` on
- * prop changes). If the caller's data can change after this component is
- * already mounted, pass a `key` that changes with it to force a remount.
+ * Note: `measurements`/`faceTextureUrl`/`equippedGarment` are only read
+ * once, when the GL context is first created (`GLView` never re-fires
+ * `onContextCreate` on prop changes). If the caller's data can change after
+ * this component is already mounted, pass a `key` that changes with it to
+ * force a remount — e.g. the Fitting Room screen keys this on the equipped
+ * item's id so trying on a different garment remounts the whole view.
  */
-export function Avatar3DView({ faceTextureUrl }: Avatar3DViewProps) {
+export function Avatar3DView({ faceTextureUrl, equippedGarment }: Avatar3DViewProps) {
   const avatarGroupRef = useRef<THREE.Group | null>(null);
   const rotationAtGestureStart = useRef(0);
   const frameRef = useRef<number | null>(null);
@@ -227,14 +235,21 @@ export function Avatar3DView({ faceTextureUrl }: Avatar3DViewProps) {
       fillLight.position.set(-1.5, -1, 1.5);
       scene.add(fillLight);
 
-      const [faceTexture, gltf] = await Promise.all([
-        faceTextureUrl ? loadFaceTextureSafe(faceTextureUrl) : Promise.resolve(null),
+      const [faceTexture, garmentTexture, gltf] = await Promise.all([
+        faceTextureUrl ? loadTextureSafe(faceTextureUrl) : Promise.resolve(null),
+        equippedGarment ? loadTextureSafe(equippedGarment.textureUrl) : Promise.resolve(null),
         loadAvatarModel(),
       ]);
 
       relaxArmsToSides(gltf.scene);
-      if (faceTexture) {
-        attachFaceDecal(gltf.scene, faceTexture);
+      const skinnedMesh = findSkinnedMesh(gltf.scene);
+      if (skinnedMesh) {
+        if (faceTexture) {
+          attachFaceDecal(gltf.scene, skinnedMesh, faceTexture);
+        }
+        if (garmentTexture && equippedGarment) {
+          attachGarmentDecal(gltf.scene, skinnedMesh, equippedGarment.category, garmentTexture);
+        }
       }
 
       // Camera distance derived from the loaded mesh's own bounding box —
