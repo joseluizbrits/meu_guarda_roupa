@@ -6,6 +6,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.garment_ml_analysis import GarmentMlAnalysis
 from app.models.user import User
 from app.models.wardrobe_item import WardrobeItem
 from app.schemas.wardrobe_item import (
@@ -34,10 +35,20 @@ async def create_item(
             detail="photo_asset_id does not reference an asset you own.",
         )
 
-    item = WardrobeItem(user_id=user.id, **data.model_dump())
+    item_fields = data.model_dump(exclude={"ml_analysis"})
+    item = WardrobeItem(user_id=user.id, **item_fields)
     db.add(item)
     await db.commit()
     await db.refresh(item)
+
+    if data.ml_analysis is not None:
+        analysis = GarmentMlAnalysis(
+            wardrobe_item_id=item.id,
+            **data.ml_analysis.model_dump(),
+        )
+        db.add(analysis)
+        await db.commit()
+
     return item
 
 
