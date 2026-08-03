@@ -20,12 +20,15 @@ import { tfliteSegmentationEngine } from '@/src/features/wardrobe/segmentation/t
  * photo (unchanged) and creates the wardrobe item.
  *
  * As soon as a photo is available, this also kicks off on-device background
- * removal (`tfliteSegmentationEngine`) in the background and swaps the
- * preview to the resulting transparent cutout once it's ready. This is
- * best-effort and native-only (see `tfliteSegmentationEngine.ts`) — on web,
- * or if segmentation/compositing fails for any reason, `cutoutUri` just
- * stays `null` and the raw photo keeps showing; saving is never blocked on
- * it.
+ * removal (`tfliteSegmentationEngine`) — unconditionally, always, for every
+ * photo — and swaps the preview to the resulting transparent cutout once
+ * it's ready. This is best-effort and native-only (see
+ * `tfliteSegmentationEngine.ts`) — on web, or if segmentation/compositing
+ * fails for any reason, `cutoutUri` just stays `null` and the raw photo
+ * keeps showing; saving is never blocked on it. `classifyGarmentPhoto` also
+ * runs alongside it, but purely to persist as `ml_analysis` at save time —
+ * it does not gate segmentation (it used to; the heuristic proved too
+ * unreliable in practice).
  */
 export default function TagGarmentScreen() {
   const photoUri = useCapturedGarmentPhotoStore((state) => state.uri);
@@ -37,7 +40,6 @@ export default function TagGarmentScreen() {
   const [error, setError] = useState<string | null>(null);
   const [segmenting, setSegmenting] = useState(false);
   const [cutoutUri, setCutoutUri] = useState<string | null>(null);
-  const [notGarmentWarning, setNotGarmentWarning] = useState<string | null>(null);
   const [classification, setClassification] = useState<GarmentClassification | null>(null);
   // Same trick as `app/onboarding/review.tsx`: `clearPhoto()` on success
   // flips `photoUri` to null right before navigating away, which would
@@ -58,33 +60,28 @@ export default function TagGarmentScreen() {
     }
     let cancelled = false;
     setCutoutUri(null);
-    setNotGarmentWarning(null);
     setClassification(null);
     setSegmenting(true);
     (async () => {
       try {
-        // Cheap gate before the expensive (44MB model) segmentation step:
-        // skip it entirely if ML Kit's generic labeler is confident this
-        // isn't clothing at all. `null` (web, low confidence, or a failed
-        // classification) fails open — segmentation still runs, same as
-        // before this gate existed.
-        const result = await classifyGarmentPhoto(photoUri);
+        // Classification no longer gates segmentation (it used to skip
+        // segmentation on a confident "not a garment" verdict, but that
+        // heuristic — ML Kit's generic labels matched against a hand-tuned
+        // keyword list — proved too unreliable in practice, wrongly
+        // skipping real garment photos; see the commit that removed this
+        // gate). It still runs, just in parallel now, purely to persist as
+        // `ml_analysis` at save time (`handleConfirm` below) for future
+        // tuning/retraining — it no longer decides anything here.
+        const [classificationResult, segmentation] = await Promise.all([
+          classifyGarmentPhoto(photoUri),
+          tfliteSegmentationEngine.segment(photoUri),
+        ]);
         if (cancelled) {
           return;
         }
-        setClassification(result);
-        if (result && !result.isLikelyGarment) {
-          setNotGarmentWarning(
-            `This looks like "${result.topLabel}", not a clothing item — background removal was skipped.`
-          );
-          return;
-        }
-
-        const segmentation = await tfliteSegmentationEngine.segment(photoUri);
+        setClassification(classificationResult);
         if (!segmentation) {
           console.warn('[tag] segmentation engine returned null — no mask, falling back to raw photo');
-        }
-        if (!segmentation || cancelled) {
           return;
         }
         const uri = await extractGarmentCutout(photoUri, segmentation.maskUri);
@@ -183,8 +180,6 @@ export default function TagGarmentScreen() {
           ) : null}
         </View>
 
-        {notGarmentWarning ? <Text style={styles.notGarmentWarning}>{notGarmentWarning}</Text> : null}
-
         <CategoryPicker value={category} onChange={setCategory} disabled={saving} />
 
         {error ? <ErrorText style={styles.error}>{error}</ErrorText> : null}
@@ -248,12 +243,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   error: {
-    marginBottom: 16,
-  },
-  notGarmentWarning: {
-    fontSize: 13,
-    opacity: 0.7,
-    textAlign: 'center',
     marginBottom: 16,
   },
   retake: {
