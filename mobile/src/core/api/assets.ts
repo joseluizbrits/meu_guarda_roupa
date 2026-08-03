@@ -1,6 +1,6 @@
 import { api } from '@/src/core/api/client';
 
-export type AssetKind = 'face_texture' | 'garment_photo';
+export type AssetKind = 'face_texture' | 'garment_photo' | 'garment_texture';
 
 export type UploadUrlResponse = {
   asset_id: string;

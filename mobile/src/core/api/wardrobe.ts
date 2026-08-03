@@ -7,6 +7,8 @@ export type WardrobeItemRead = {
   category: WardrobeCategory;
   photo_asset_id: string;
   photo_url: string;
+  texture_asset_id: string | null;
+  texture_url: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -35,6 +37,16 @@ export async function getWardrobeItem(id: string): Promise<WardrobeItemRead> {
 
 export async function updateWardrobeItem(id: string, payload: UpdateWardrobeItemPayload): Promise<WardrobeItemRead> {
   return api.patch<WardrobeItemRead>(`/api/v1/wardrobe-items/${id}`, payload);
+}
+
+/**
+ * Sets (or replaces) the on-device background-removal cutout for an item.
+ * Best-effort by design at the call site (`app/wardrobe/tag.tsx`) — a
+ * failure here shouldn't block the item from having already been saved
+ * with just its raw photo.
+ */
+export async function setWardrobeItemTexture(id: string, textureAssetId: string): Promise<WardrobeItemRead> {
+  return api.put<WardrobeItemRead>(`/api/v1/wardrobe-items/${id}/texture`, { texture_asset_id: textureAssetId });
 }
 
 export async function deleteWardrobeItem(id: string): Promise<void> {

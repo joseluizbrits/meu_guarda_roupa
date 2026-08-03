@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Image, StyleSheet } from 'react-native';
+import { ActivityIndicator, Image, StyleSheet } from 'react-native';
 import { Stack, router } from 'expo-router';
 
 import { Text, View } from '@/components/Themed';
@@ -7,15 +7,24 @@ import { Button } from '@/src/components/atoms/Button';
 import { ErrorText } from '@/src/components/atoms/ErrorText';
 import { CategoryPicker } from '@/src/components/molecules/CategoryPicker';
 import { requestUploadUrl, uploadToPresignedUrl } from '@/src/core/api/assets';
-import { createWardrobeItem, WardrobeCategory } from '@/src/core/api/wardrobe';
+import { createWardrobeItem, setWardrobeItemTexture, WardrobeCategory } from '@/src/core/api/wardrobe';
 import { readUriBytes } from '@/src/features/avatar/faceTexture/readUriBytes';
 import { useCapturedGarmentPhotoStore } from '@/src/features/wardrobe/capturedGarmentPhotoStore';
+import { extractGarmentCutout } from '@/src/features/wardrobe/segmentation/extractGarmentCutout';
+import { tfliteSegmentationEngine } from '@/src/features/wardrobe/segmentation/tfliteSegmentationEngine';
 
 /**
  * Second (and final) step of the garment capture flow — shows the just-taken
- * photo, lets the user pick its category, then on confirm: uploads the photo
- * and creates the wardrobe item. No compositing step here (unlike the face
- * texture flow) — the raw photo is stored as-is.
+ * photo, lets the user pick its category, then on confirm: uploads the raw
+ * photo (unchanged) and creates the wardrobe item.
+ *
+ * As soon as a photo is available, this also kicks off on-device background
+ * removal (`tfliteSegmentationEngine`) in the background and swaps the
+ * preview to the resulting transparent cutout once it's ready. This is
+ * best-effort and native-only (see `tfliteSegmentationEngine.ts`) — on web,
+ * or if segmentation/compositing fails for any reason, `cutoutUri` just
+ * stays `null` and the raw photo keeps showing; saving is never blocked on
+ * it.
  */
 export default function TagGarmentScreen() {
   const photoUri = useCapturedGarmentPhotoStore((state) => state.uri);
@@ -25,6 +34,8 @@ export default function TagGarmentScreen() {
   const [category, setCategory] = useState<WardrobeCategory | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [segmenting, setSegmenting] = useState(false);
+  const [cutoutUri, setCutoutUri] = useState<string | null>(null);
   // Same trick as `app/onboarding/review.tsx`: `clearPhoto()` on success
   // flips `photoUri` to null right before navigating away, which would
   // otherwise race the "no photo, go capture one" redirect below.
@@ -38,6 +49,37 @@ export default function TagGarmentScreen() {
     }
   }, [photoUri]);
 
+  useEffect(() => {
+    if (!photoUri) {
+      return;
+    }
+    let cancelled = false;
+    setCutoutUri(null);
+    setSegmenting(true);
+    (async () => {
+      try {
+        const segmentation = await tfliteSegmentationEngine.segment(photoUri);
+        if (!segmentation || cancelled) {
+          return;
+        }
+        const uri = await extractGarmentCutout(photoUri, segmentation.maskUri);
+        if (!cancelled) {
+          setCutoutUri(uri);
+        }
+      } catch {
+        // Best-effort — leave `cutoutUri` null and fall back to the raw
+        // photo, both for the preview and at confirm time below.
+      } finally {
+        if (!cancelled) {
+          setSegmenting(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [photoUri]);
+
   async function handleConfirm() {
     if (!photoUri || !contentType || !category) {
       return;
@@ -48,7 +90,21 @@ export default function TagGarmentScreen() {
       const bytes = await readUriBytes(photoUri);
       const { asset_id, upload_url } = await requestUploadUrl('garment_photo', contentType);
       await uploadToPresignedUrl(upload_url, bytes, contentType);
-      await createWardrobeItem({ category, photo_asset_id: asset_id });
+      const item = await createWardrobeItem({ category, photo_asset_id: asset_id });
+
+      // The cutout is a nice-to-have, never a save blocker: any failure
+      // here just leaves the item saved with its raw photo only, exactly
+      // like today.
+      if (cutoutUri) {
+        try {
+          const textureBytes = await readUriBytes(cutoutUri);
+          const textureUpload = await requestUploadUrl('garment_texture', 'image/png');
+          await uploadToPresignedUrl(textureUpload.upload_url, textureBytes, 'image/png');
+          await setWardrobeItemTexture(item.id, textureUpload.asset_id);
+        } catch {
+          // Ignored — see comment above.
+        }
+      }
 
       confirmedSuccessfully.current = true;
       clearPhoto();
@@ -78,7 +134,15 @@ export default function TagGarmentScreen() {
         <Text style={styles.title}>What is this?</Text>
         <Text style={styles.subtitle}>Pick a category for this item.</Text>
 
-        <Image source={{ uri: photoUri }} style={styles.preview} />
+        <View style={styles.previewWrapper}>
+          <Image source={{ uri: cutoutUri ?? photoUri }} style={styles.preview} />
+          {segmenting ? (
+            <View style={styles.segmentingBadge}>
+              <ActivityIndicator size="small" />
+              <Text style={styles.segmentingText}>Removing background...</Text>
+            </View>
+          ) : null}
+        </View>
 
         <CategoryPicker value={category} onChange={setCategory} disabled={saving} />
 
@@ -116,12 +180,31 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     textAlign: 'center',
   },
+  previewWrapper: {
+    width: '100%',
+    marginBottom: 24,
+  },
   preview: {
     width: '100%',
     aspectRatio: 1,
     borderRadius: 12,
-    marginBottom: 24,
     backgroundColor: 'rgba(0,0,0,0.05)',
+  },
+  segmentingBadge: {
+    position: 'absolute',
+    bottom: 12,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  segmentingText: {
+    color: '#fff',
+    fontSize: 12,
   },
   error: {
     marginBottom: 16,
