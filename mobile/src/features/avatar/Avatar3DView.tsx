@@ -16,17 +16,19 @@ const CAMERA_FRAMING_MARGIN = 1.35;
 
 // The rig's authored bind pose is closer to a T-pose than a natural stance
 // (arms extend outward and only slope down ~25-30 degrees) — looks broken
-// for a "look at your outfit" view. These angles were derived from the
-// GLB's own bind-pose joint matrices (each arm bone's local Z/"roll" axis
-// is aligned with world Z, so rotating around it swings the bone within
-// the body's width/height plane) and tuned against a render: rotating each
-// upper arm by ~64 degrees brings the hand down to rest just outside the
-// thigh; a first attempt at also adding a large forearm-only rotation for
-// the elbow bend overshot and crossed the hands in front of the groin, so
-// the forearm's own extra rotation is kept small. `_L`/`_R` bones are
-// mirrored, hence opposite signs.
-const UPPER_ARM_DROP_RADIANS = THREE.MathUtils.degToRad(64);
-const ELBOW_BEND_RADIANS = THREE.MathUtils.degToRad(5);
+// for a "look at your outfit" view. This angle was derived from the GLB's
+// own bind-pose joint matrices (each arm bone's local Z/"roll" axis is
+// aligned with world Z, so rotating around it swings the bone within the
+// body's width/height plane) and tuned against a render — rotating each
+// upper arm by 58 degrees rests the hand beside the outer thigh with no
+// clipping into the body, checked from the front, side, and back. A
+// previous attempt used 64 degrees plus an extra forearm-only rotation for
+// an elbow bend; both together overshot and crossed the hands in front of
+// the groin (visibly wrong from the front), so the elbow bend was dropped
+// entirely rather than just shrunk further — the upper-arm rotation alone
+// already reads as a natural relaxed pose. `_L`/`_R` bones are mirrored,
+// hence opposite signs.
+const UPPER_ARM_DROP_RADIANS = THREE.MathUtils.degToRad(58);
 
 // Face decal placement, derived from the GLB's own bind-pose vertex data
 // (the `head`-bone-weighted vertices), not guessed: the head bone's origin
@@ -121,8 +123,6 @@ async function loadAvatarModel(): Promise<GLTF> {
 function relaxArmsToSides(scene: THREE.Group) {
   scene.getObjectByName('upperarm_L')?.rotateZ(-UPPER_ARM_DROP_RADIANS);
   scene.getObjectByName('upperarm_R')?.rotateZ(UPPER_ARM_DROP_RADIANS);
-  scene.getObjectByName('lowerarm_L')?.rotateZ(-ELBOW_BEND_RADIANS);
-  scene.getObjectByName('lowerarm_R')?.rotateZ(ELBOW_BEND_RADIANS);
 }
 
 /**
