@@ -96,6 +96,13 @@ export default function TagGarmentScreen() {
         const classificationResult = await classifyGarmentPhoto(uriToClassify);
         if (!cancelled) {
           setClassification(classificationResult);
+          if (classificationResult?.suggestedCategory) {
+            // Functional update, not a direct read of `category`: this
+            // resolves a second or two after the photo is taken, so the
+            // user may have already picked a category by hand while
+            // waiting — never clobber that, only fill in an actual blank.
+            setCategory((current) => current ?? classificationResult.suggestedCategory);
+          }
         }
       } finally {
         if (!cancelled) {

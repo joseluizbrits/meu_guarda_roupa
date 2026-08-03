@@ -1,6 +1,8 @@
 import { Platform } from 'react-native';
 import ImageLabeling from '@react-native-ml-kit/image-labeling';
 
+import type { WardrobeCategory } from '@/src/core/api/wardrobe';
+
 /**
  * Gate in front of the (expensive, 44MB-model) segmentation step: uses
  * Google ML Kit's bundled generic on-device image labeler — no custom
@@ -75,10 +77,44 @@ const NON_GARMENT_OVERRIDE_KEYWORDS = ['pillow', 'cushion'];
 // treated the same as "couldn't classify" (fail open, let segmentation run).
 const MIN_CONFIDENCE = 0.4;
 
+// Maps a label to one of the app's own 6 wardrobe categories, for
+// pre-selecting `CategoryPicker` on the tag screen — a suggestion the user
+// can freely override, not a gate, so this can afford to be a bit more
+// specific/narrower than `GARMENT_LABEL_KEYWORDS` above (a miss here just
+// means nothing gets pre-selected, not that segmentation gets skipped).
+// Checked in this order; the first category with a matching label wins.
+const CATEGORY_LABEL_KEYWORDS: [WardrobeCategory, string[]][] = [
+  ['dress', ['dress', 'gown', 'kimono']],
+  ['outerwear', ['jacket', 'coat', 'blazer', 'outerwear']],
+  ['shoes', ['footwear', 'shoe', 'sneaker', 'boot', 'sandal']],
+  ['accessory', ['hat', 'cap', 'scarf', 'glove']],
+  ['bottom', ['jeans', 'trousers', 'pants', 'shorts', 'skirt', 'denim']],
+  ['top', ['shirt', 't-shirt', 'blouse', 'sweater', 'sweatshirt', 'hoodie', 'cardigan', 'jersey']],
+];
+
+function suggestCategory(labels: { text: string; confidence: number }[]): WardrobeCategory | null {
+  const sorted = [...labels].sort((a, b) => b.confidence - a.confidence);
+  for (const label of sorted) {
+    if (label.confidence < MIN_CONFIDENCE) {
+      continue;
+    }
+    const text = label.text.toLowerCase();
+    const match = CATEGORY_LABEL_KEYWORDS.find(([, keywords]) => keywords.some((keyword) => text.includes(keyword)));
+    if (match) {
+      return match[0];
+    }
+  }
+  return null;
+}
+
 export type GarmentClassification = {
   isLikelyGarment: boolean;
   topLabel: string;
   confidence: number;
+  // Best-guess category from the same labels, for pre-selecting
+  // `CategoryPicker` — `null` when nothing in `CATEGORY_LABEL_KEYWORDS`
+  // matched (still a valid outcome; the user just picks manually).
+  suggestedCategory: WardrobeCategory | null;
   // Full ML Kit output (not just the label(s) the gate acted on) — kept so
   // callers can persist it for retraining/tuning later, per
   // `GarmentMlAnalysisPayload` in `core/api/wardrobe.ts`.
@@ -120,7 +156,13 @@ export async function classifyGarmentPhoto(imageUri: string): Promise<GarmentCla
     const isLikelyGarment =
       matchesKeyword(GARMENT_LABEL_KEYWORDS) && !matchesKeyword(NON_GARMENT_OVERRIDE_KEYWORDS);
 
-    return { isLikelyGarment, topLabel: top.text, confidence: top.confidence, rawLabels };
+    return {
+      isLikelyGarment,
+      topLabel: top.text,
+      confidence: top.confidence,
+      suggestedCategory: suggestCategory(labels),
+      rawLabels,
+    };
   } catch (error) {
     console.warn('[garmentClassifier] classification failed:', error);
     return null;
