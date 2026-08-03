@@ -17,10 +17,11 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Per OpenAI's current image-editing docs (checked directly, not assumed —
-# model names/pricing shift over time). Verify against
-# https://platform.openai.com/docs/guides/image-generation before relying
-# on this in production.
+# Verified against the real API with a live key (not just docs — the docs'
+# `response_format` param turned out stale/wrong for this model, see below).
+# Model names/pricing still shift over time; re-check
+# https://platform.openai.com/docs/guides/image-generation if this starts
+# failing.
 _MODEL = "gpt-image-2"
 
 _PROMPT = (
@@ -39,12 +40,14 @@ def generate_clean_product_photo(image_bytes: bytes) -> bytes | None:
         client = OpenAI(api_key=settings.openai_api_key)
         image_file = io.BytesIO(image_bytes)
         image_file.name = "garment.png"
+        # No `response_format` param — this model rejects it outright
+        # ("Unknown parameter: 'response_format'", confirmed against the
+        # real API); b64_json in the response is just the default.
         result = client.images.edit(
             model=_MODEL,
             image=image_file,
             prompt=_PROMPT,
             size="1024x1024",
-            response_format="b64_json",
         )
         b64_data = result.data[0].b64_json
         if not b64_data:

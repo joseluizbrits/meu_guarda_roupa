@@ -65,6 +65,10 @@ services:
       MINIO_PUBLIC_ENDPOINT: 192.168.0.36:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      # Powers ai_image_service.py's clean-product-photo generation. Empty
+      # (unset in infra/.env) just leaves that feature off — see
+      # Settings.openai_api_key's own doc comment.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
