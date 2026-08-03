@@ -3,15 +3,45 @@ import { Platform } from 'react-native';
 import { getCsrfToken } from '@/src/core/api/csrf';
 import * as tokenStorage from '@/src/core/auth/tokenStorage';
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL;
+const configuredApiUrl = process.env.EXPO_PUBLIC_API_URL;
 const isWeb = Platform.OS === 'web';
 
-if (!BASE_URL) {
+if (!configuredApiUrl) {
   // eslint-disable-next-line no-console
   console.warn(
     'EXPO_PUBLIC_API_URL is not set — API requests will fail. Copy mobile/.env.example to mobile/.env and point it at your backend.'
   );
 }
+
+/**
+ * On web, the API host actually has to match whatever host the page itself
+ * was loaded from (`localhost`, `127.0.0.1`, or the dev machine's LAN IP —
+ * `expo start --web` defaults to `localhost`, but `EXPO_PUBLIC_API_URL` is
+ * fixed to the LAN IP so phones can reach it). If they don't match, the
+ * browser considers the API cross-site, and silently drops the
+ * `SameSite=Lax` auth cookies from `Set-Cookie` entirely — they show up in
+ * the response but the browser refuses to store them, so they never come
+ * back on the next request. Docker publishes the backend port on every
+ * interface, so swapping in the page's own hostname (whichever one you
+ * happened to open it from) and keeping the configured port always
+ * resolves to a reachable, same-site backend. Native has no `window`
+ * (and no browser cookie jar/SameSite policy to satisfy), so it always
+ * uses `configuredApiUrl` as-is.
+ */
+function resolveBaseUrl(): string | undefined {
+  if (!configuredApiUrl || !isWeb || typeof window === 'undefined') {
+    return configuredApiUrl;
+  }
+  try {
+    const url = new URL(configuredApiUrl);
+    url.hostname = window.location.hostname;
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return configuredApiUrl;
+  }
+}
+
+const BASE_URL = resolveBaseUrl();
 
 export class ApiError extends Error {
   status: number;
