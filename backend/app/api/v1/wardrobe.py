@@ -8,6 +8,7 @@ from app.models.user import User
 from app.schemas.wardrobe_item import (
     WardrobeItemCreate,
     WardrobeItemRead,
+    WardrobeItemSetTexture,
     WardrobeItemUpdate,
 )
 from app.services import wardrobe_service
@@ -58,6 +59,23 @@ async def update_wardrobe_item(
     db: AsyncSession = Depends(get_db),
 ) -> WardrobeItemRead:
     item = await wardrobe_service.update_item(db, current_user, item_id, data)
+    if item is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Wardrobe item not found."
+        )
+    return await wardrobe_service.to_read(db, item)
+
+
+@router.put("/{item_id}/texture", response_model=WardrobeItemRead)
+async def set_wardrobe_item_texture(
+    item_id: uuid.UUID,
+    data: WardrobeItemSetTexture,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> WardrobeItemRead:
+    item = await wardrobe_service.set_texture(
+        db, current_user, item_id, data.texture_asset_id
+    )
     if item is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Wardrobe item not found."

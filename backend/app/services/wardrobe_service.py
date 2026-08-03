@@ -11,6 +11,7 @@ from app.models.wardrobe_item import WardrobeItem
 from app.schemas.wardrobe_item import (
     WardrobeItemCreate,
     WardrobeItemRead,
+    WardrobeItemSetTexture,
     WardrobeItemUpdate,
 )
 from app.services import asset_service
@@ -91,16 +92,52 @@ async def delete_item(db: AsyncSession, user: User, item_id: uuid.UUID) -> bool:
     return True
 
 
+async def set_texture(
+    db: AsyncSession, user: User, item_id: uuid.UUID, texture_asset_id: uuid.UUID
+) -> WardrobeItem | None:
+    """Attach a processed (background-removed) texture to an existing item.
+
+    Returns `None` if the item doesn't exist/isn't owned by `user` (caller
+    maps that to 404). Raises 400 if `texture_asset_id` doesn't reference
+    an asset owned by this user — same ownership check as `create_item`'s
+    `photo_asset_id` check.
+    """
+    item = await get_item(db, user, item_id)
+    if item is None:
+        return None
+
+    asset = await asset_service.get_asset(db, texture_asset_id)
+    if asset is None or asset.owner_user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="texture_asset_id does not reference an asset you own.",
+        )
+
+    item.texture_asset_id = texture_asset_id
+    await db.commit()
+    await db.refresh(item)
+    return item
+
+
 async def to_read(db: AsyncSession, item: WardrobeItem) -> WardrobeItemRead:
-    """Build the response schema, resolving the photo's download URL
-    server-side so the client doesn't need a second round-trip to render."""
+    """Build the response schema, resolving the photo's (and, if set, the
+    texture's) download URL server-side so the client doesn't need a
+    second round-trip to render."""
     photo_url = await asset_service.get_download_url(db, item.photo_asset_id)
+
+    texture_url = None
+    if item.texture_asset_id is not None:
+        texture_url = await asset_service.get_download_url(
+            db, item.texture_asset_id
+        )
 
     return WardrobeItemRead(
         id=item.id,
         category=item.category,
         photo_asset_id=item.photo_asset_id,
         photo_url=photo_url,
+        texture_asset_id=item.texture_asset_id,
+        texture_url=texture_url,
         created_at=item.created_at,
         updated_at=item.updated_at,
     )

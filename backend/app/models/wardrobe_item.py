@@ -26,6 +26,9 @@ class WardrobeItem(Base):
     photo_asset_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("assets.id"), nullable=False
     )
+    texture_asset_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("assets.id"), nullable=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
