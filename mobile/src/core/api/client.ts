@@ -1,6 +1,10 @@
+import { Platform } from 'react-native';
+
+import { getCsrfToken } from '@/src/core/api/csrf';
 import * as tokenStorage from '@/src/core/auth/tokenStorage';
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL;
+const isWeb = Platform.OS === 'web';
 
 if (!BASE_URL) {
   // eslint-disable-next-line no-console
@@ -22,6 +26,7 @@ export class ApiError extends Error {
 }
 
 type Method = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+const MUTATING_METHODS = new Set<Method>(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 export type ApiRequestOptions = {
   method?: Method;
@@ -39,14 +44,28 @@ export type ApiRequestOptions = {
 type RawResult = { response: Response; data: unknown };
 
 async function rawFetch(path: string, options: ApiRequestOptions, accessToken?: string | null): Promise<RawResult> {
+  const method = options.method ?? 'GET';
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (accessToken) {
     headers.Authorization = `Bearer ${accessToken}`;
   }
+  // Web has no Authorization header at all (the access token lives in an
+  // httpOnly cookie, sent automatically via `credentials: 'include'`
+  // below) — but that means the browser auto-attaches it to every request,
+  // which needs the double-submit CSRF header on anything mutating (see
+  // `main.py`'s `csrf_protection` middleware). Native's Bearer-header auth
+  // never carries this cookie, so it's naturally exempt server-side.
+  if (isWeb && MUTATING_METHODS.has(method)) {
+    const csrfToken = getCsrfToken();
+    if (csrfToken) {
+      headers['X-CSRF-Token'] = csrfToken;
+    }
+  }
 
   const response = await fetch(`${BASE_URL ?? ''}${path}`, {
-    method: options.method ?? 'GET',
+    method,
     headers,
+    credentials: 'include',
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
   });
 
@@ -93,14 +112,17 @@ let refreshPromise: Promise<string | null> | null = null;
 async function refreshAccessToken(): Promise<string | null> {
   if (!refreshPromise) {
     refreshPromise = (async () => {
-      const storedRefreshToken = await tokenStorage.getRefreshToken();
-      if (!storedRefreshToken) {
+      // Web: the refresh token lives in an httpOnly cookie, sent
+      // automatically — no body needed, and nothing for JS to read anyway.
+      // Native: it's in expo-secure-store, sent explicitly in the body.
+      const storedRefreshToken = isWeb ? null : await tokenStorage.getRefreshToken();
+      if (!isWeb && !storedRefreshToken) {
         return null;
       }
 
       const { response, data } = await rawFetch('/api/v1/auth/refresh', {
         method: 'POST',
-        body: { refresh_token: storedRefreshToken },
+        body: storedRefreshToken ? { refresh_token: storedRefreshToken } : undefined,
         auth: false,
       });
 
@@ -146,7 +168,9 @@ export async function apiRequest<T = unknown>(path: string, options: ApiRequestO
   if (response.status === 401 && useAuth) {
     const newAccessToken = await refreshAccessToken();
     if (newAccessToken) {
-      ({ response, data } = await rawFetch(path, options, newAccessToken));
+      // Web never attaches an Authorization header (see rawFetch) — the
+      // retry just relies on the cookie the refresh response already set.
+      ({ response, data } = await rawFetch(path, options, isWeb ? null : newAccessToken));
     } else {
       await tokenStorage.clearTokens();
       notifySessionExpired();

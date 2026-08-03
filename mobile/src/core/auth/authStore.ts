@@ -53,6 +53,16 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: async () => {
+    // Clears the web session's httpOnly cookies server-side — tokenStorage
+    // alone can't do that (JS can't touch an httpOnly cookie at all).
+    // Native has nothing for this endpoint to clear, but calling it is
+    // harmless. Best-effort: a network failure shouldn't block logging out
+    // locally.
+    try {
+      await api.post('/api/v1/auth/logout', undefined, { auth: false });
+    } catch {
+      // Ignored — see comment above.
+    }
     await tokenStorage.clearTokens();
     set({ user: null, isAuthenticated: false });
   },

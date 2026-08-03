@@ -5,23 +5,25 @@ const ACCESS_TOKEN_KEY = 'access_token';
 const REFRESH_TOKEN_KEY = 'refresh_token';
 
 // expo-secure-store has no web implementation (SDK 57) — there's no
-// Keychain/Keystore in a browser. Fall back to localStorage on web so the
-// app is still usable for local `expo start --web` development; native
-// builds (iOS/Android) use the real secure enclave.
+// Keychain/Keystore in a browser. Web doesn't need one here either: the
+// backend sets the access/refresh tokens as httpOnly cookies instead (see
+// `auth_service.set_auth_cookies` and `client.ts`'s `credentials: 'include'`
+// fetches) — never readable by JS at all, which is strictly better than
+// anything this module could do client-side (an earlier version fell back
+// to localStorage, readable by any JS on the page — a real XSS exposure).
+// So on web these are all no-ops; native (iOS/Android) uses the real secure
+// enclave as before.
 const isWeb = Platform.OS === 'web';
 
 async function getItem(key: string): Promise<string | null> {
   if (isWeb) {
-    return typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+    return null;
   }
   return SecureStore.getItemAsync(key);
 }
 
 async function setItem(key: string, value: string): Promise<void> {
   if (isWeb) {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(key, value);
-    }
     return;
   }
   await SecureStore.setItemAsync(key, value);
@@ -29,9 +31,6 @@ async function setItem(key: string, value: string): Promise<void> {
 
 async function deleteItem(key: string): Promise<void> {
   if (isWeb) {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem(key);
-    }
     return;
   }
   await SecureStore.deleteItemAsync(key);
