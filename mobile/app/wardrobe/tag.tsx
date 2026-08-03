@@ -25,10 +25,12 @@ import { tfliteSegmentationEngine } from '@/src/features/wardrobe/segmentation/t
  * it's ready. This is best-effort and native-only (see
  * `tfliteSegmentationEngine.ts`) — on web, or if segmentation/compositing
  * fails for any reason, `cutoutUri` just stays `null` and the raw photo
- * keeps showing; saving is never blocked on it. `classifyGarmentPhoto` also
- * runs alongside it, but purely to persist as `ml_analysis` at save time —
- * it does not gate segmentation (it used to; the heuristic proved too
- * unreliable in practice).
+ * keeps showing; saving is never blocked on it. `classifyGarmentPhoto` runs
+ * *after* that, against the cutout when there is one (an isolated garment
+ * is a cleaner signal for ML Kit than the raw photo with its background) —
+ * purely to persist as `ml_analysis` at save time, it does not gate
+ * segmentation (it used to; the heuristic proved too unreliable in
+ * practice).
  */
 export default function TagGarmentScreen() {
   const photoUri = useCapturedGarmentPhotoStore((state) => state.uri);
@@ -63,36 +65,38 @@ export default function TagGarmentScreen() {
     setClassification(null);
     setSegmenting(true);
     (async () => {
+      // Classification runs *after* segmentation, against the cutout when
+      // one comes out of it — falls back to the raw photo otherwise
+      // (segmentation failed, or on web where it's always null). Feeds
+      // extractGarmentCutout's output as-is either way, at whatever size
+      // it already produces — not resizing that further here.
+      let uriToClassify = photoUri;
       try {
-        // Classification no longer gates segmentation (it used to skip
-        // segmentation on a confident "not a garment" verdict, but that
-        // heuristic — ML Kit's generic labels matched against a hand-tuned
-        // keyword list — proved too unreliable in practice, wrongly
-        // skipping real garment photos; see the commit that removed this
-        // gate). It still runs, just in parallel now, purely to persist as
-        // `ml_analysis` at save time (`handleConfirm` below) for future
-        // tuning/retraining — it no longer decides anything here.
-        const [classificationResult, segmentation] = await Promise.all([
-          classifyGarmentPhoto(photoUri),
-          tfliteSegmentationEngine.segment(photoUri),
-        ]);
-        if (cancelled) {
-          return;
-        }
-        setClassification(classificationResult);
+        const segmentation = await tfliteSegmentationEngine.segment(photoUri);
         if (!segmentation) {
           console.warn('[tag] segmentation engine returned null — no mask, falling back to raw photo');
-          return;
-        }
-        const uri = await extractGarmentCutout(photoUri, segmentation.maskUri);
-        if (!cancelled) {
-          setCutoutUri(uri);
+        } else {
+          const uri = await extractGarmentCutout(photoUri, segmentation.maskUri);
+          if (!cancelled) {
+            setCutoutUri(uri);
+            uriToClassify = uri;
+          }
         }
       } catch (error) {
         // Best-effort — leave `cutoutUri` null and fall back to the raw
         // photo, both for the preview and at confirm time below. Logged so
         // a real on-device failure is diagnosable instead of silent.
         console.warn('[tag] cutout extraction failed, falling back to raw photo:', error);
+      }
+
+      if (cancelled) {
+        return;
+      }
+      try {
+        const classificationResult = await classifyGarmentPhoto(uriToClassify);
+        if (!cancelled) {
+          setClassification(classificationResult);
+        }
       } finally {
         if (!cancelled) {
           setSegmenting(false);
