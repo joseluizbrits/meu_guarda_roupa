@@ -7,6 +7,8 @@ import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
+import { readUriBytes } from './faceTexture/readUriBytes';
+
 // Radians of Y-axis rotation per pixel of horizontal drag. Free-spin (no
 // clamping) — simplest behavior and fine for an MVP turntable view.
 const ROTATE_SPEED = 0.012;
@@ -105,12 +107,25 @@ async function loadFaceTextureSafe(url: string): Promise<THREE.Texture | null> {
  * buffer directly — no external textures or `.bin` file to resolve
  * relative to a base path — so none of `expo-three`'s asset-resolution
  * glue is actually needed for this asset.
+ *
+ * Bytes are read directly via `readUriBytes` (same helper the face-texture
+ * pipeline uses) and handed to `parseAsync` instead of `loadAsync(url)` —
+ * `loadAsync` goes through `three`'s `FileLoader`, which fetches over RN's
+ * `fetch()` with a streamed `response.body.getReader()`. That path doesn't
+ * behave like a browser on native (missing `ProgressEvent` global, and the
+ * final read can land as a stringified `[object ArrayBuffer]` instead of
+ * real bytes, which then fails `JSON.parse` inside `GLTFLoader.parse`).
+ * Reading the file's bytes ourselves sidesteps `FileLoader` entirely.
  */
 async function loadAvatarModel(): Promise<GLTF> {
   const asset = Asset.fromModule(require('@/assets/models/BaseHuman.glb'));
   await asset.downloadAsync();
   const modelUrl = asset.localUri ?? asset.uri;
-  return new GLTFLoader().loadAsync(modelUrl);
+  const bytes = await readUriBytes(modelUrl);
+  // `Uint8Array.buffer` types as `ArrayBufferLike` (TS lib allows a
+  // `SharedArrayBuffer` backing); `readUriBytes` never produces one, so
+  // this is always a plain `ArrayBuffer` at runtime.
+  return new GLTFLoader().parseAsync(bytes.buffer as ArrayBuffer, '');
 }
 
 /**
