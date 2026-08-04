@@ -141,7 +141,11 @@ export default function FittingRoomScreen() {
                 onPress={() => setEquippedItem(item)}
                 accessibilityRole="button"
                 accessibilityLabel={`Try on ${item.category}`}>
-                <Image source={{ uri: item.texture_url! }} style={styles.pickerThumbnail} />
+                <Image
+                  source={{ uri: item.ai_photo_url ?? item.texture_url! }}
+                  style={styles.pickerThumbnail}
+                  resizeMode="contain"
+                />
               </Pressable>
             ))}
           </ScrollView>
