@@ -35,3 +35,4 @@
 
 ## Validation Log
 - 2026-09-03 22:xx — build gradle local sucesso; APK 280MB assinado; `/downloads` index + arquivo 200; health ok. Commit `6675182`.
+- 2026-09-03 — QA: 6/7 PASS; item 5 inicial FAIL por range request (1MB esperado, 1MB recebido — por design). Resolvido: download completo 293839915 bytes, hash sha256 local==remoto (`04ecf62…`), byte-for-byte íntegro. Overall PASS. Commit `6201580`.
