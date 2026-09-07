@@ -1,9 +1,10 @@
+import os
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 from app.api.v1 import router as api_v1_router
 from app.core.config import settings
@@ -11,10 +12,16 @@ from app.core.storage import ensure_bucket_exists
 
 _CSRF_PROTECTED_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
+# Directory that holds distributable build artifacts (e.g. the Android APK).
+# Mounted as a host bind volume (see infra/docker-compose.yml) so builds can
+# drop files in on the host and they appear here immediately.
+DOWNLOADS_DIR = "/app/downloads"
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     ensure_bucket_exists()
+    os.makedirs(DOWNLOADS_DIR, exist_ok=True)
     yield
 
 
@@ -65,3 +72,33 @@ app.include_router(api_v1_router, prefix="/api/v1")
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+# Downloadable build artifacts. A simple hand-rolled handler (instead of
+# StaticFiles) so we get both a browsable index and per-file serving without
+# the documented mount-vs-route precedence surprises.
+@app.get("/downloads")
+@app.get("/downloads/")
+async def downloads_index() -> HTMLResponse:
+    files = sorted(
+        (f for f in os.listdir(DOWNLOADS_DIR) if os.path.isfile(os.path.join(DOWNLOADS_DIR, f))),
+        reverse=True,
+    )
+    rows = "".join(
+        f'<li><a href="/downloads/{f}">{f}</a> '
+        f"({os.path.getsize(os.path.join(DOWNLOADS_DIR, f)) // (1024 * 1024)} MB)</li>"
+        for f in files
+    )
+    html = f"""<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><title>Downloads — Meu Guarda-roupa</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{{font-family:system-ui,sans-serif;max-width:640px;margin:2rem auto;padding:0 1rem}}
+h1{{font-size:1.4rem}}ul{{line-height:1.9;padding-left:1.2rem}}</style></head>
+<body><h1>Downloads — Meu Guarda-roupa</h1><ul>{rows or "<li>Nenhuma versão disponível.</li>"}</ul></body></html>"""
+    return HTMLResponse(html)
+
+
+@app.get("/downloads/{filename}")
+async def download_file(filename: str) -> FileResponse:
+    return FileResponse(os.path.join(DOWNLOADS_DIR, filename), filename=filename)

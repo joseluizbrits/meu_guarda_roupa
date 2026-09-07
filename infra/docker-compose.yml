@@ -92,6 +92,8 @@ services:
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       APP_HOST: ${APP_HOST}
+    volumes:
+      - ./downloads:/app/downloads
     depends_on:
       postgres:
         condition: service_healthy
