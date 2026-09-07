@@ -15,6 +15,8 @@
 - [x] Versionar: `meu-guarda-roupa-1.0.0.apk` copiado pro dir servido.
 - [x] Rota índices listando versões (`/downloads/` HTML).
 - [x] Validar: health 200, index listando APK, download via GET devolve APK íntegro (range 1MB → "Android package").
+- [x] Endpoints "latest": `GET /api/v1/app/latest` (JSON metadata + URLs absolutas https) + `GET /downloads/latest.apk` (APK mais recente).
+- [x] `scripts/build-apk.sh` escreve `manifest.json` (version/versionCode/size/updatedAt) — fonte da verdade pro endpoint latest.
 
 ## Subtasks
 - **frontend (mobile):** `app.json` + `.env` — feito.
