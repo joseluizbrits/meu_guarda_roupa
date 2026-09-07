@@ -1,8 +1,9 @@
+import json
 import os
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
@@ -16,6 +17,36 @@ _CSRF_PROTECTED_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 # Mounted as a host bind volume (see infra/docker-compose.yml) so builds can
 # drop files in on the host and they appear here immediately.
 DOWNLOADS_DIR = "/app/downloads"
+
+# Written by scripts/build-apk.sh next to the APK; the single source of truth
+# for what the latest build actually is (name has the version, manifest has
+# versionCode + metadata).
+MANIFEST_PATH = os.path.join(DOWNLOADS_DIR, "manifest.json")
+
+
+def _load_manifest() -> dict | None:
+    try:
+        with open(MANIFEST_PATH) as fh:
+            return json.load(fh)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+
+
+def _latest_apk() -> str | None:
+    """Newest .apk in the downloads dir, by manifest if available else mtime."""
+    manifest = _load_manifest()
+    if manifest and manifest.get("filename"):
+        candidate = os.path.join(DOWNLOADS_DIR, manifest["filename"])
+        if os.path.isfile(candidate):
+            return manifest["filename"]
+    apks = [
+        f
+        for f in os.listdir(DOWNLOADS_DIR)
+        if f.endswith(".apk") and os.path.isfile(os.path.join(DOWNLOADS_DIR, f))
+    ]
+    if not apks:
+        return None
+    return max(apks, key=lambda f: os.path.getmtime(os.path.join(DOWNLOADS_DIR, f)))
 
 
 @asynccontextmanager
@@ -97,6 +128,50 @@ async def downloads_index() -> HTMLResponse:
 h1{{font-size:1.4rem}}ul{{line-height:1.9;padding-left:1.2rem}}</style></head>
 <body><h1>Downloads — Meu Guarda-roupa</h1><ul>{rows or "<li>Nenhuma versão disponível.</li>"}</ul></body></html>"""
     return HTMLResponse(html)
+
+
+@app.get("/downloads/latest.apk")
+async def download_latest_apk() -> FileResponse:
+    """Serve o APK mais recente (mesma versão do manifest, se existir)."""
+    filename = _latest_apk()
+    if not filename:
+        raise HTTPException(status_code=404, detail="Nenhum APK publicado ainda.")
+    return FileResponse(os.path.join(DOWNLOADS_DIR, filename), filename=filename)
+
+
+@app.get("/api/v1/app/latest")
+async def app_latest(request: Request) -> JSONResponse:
+    """Metadata da versão mais recente do app + URL de download."""
+    filename = _latest_apk()
+    manifest = _load_manifest()
+    if not filename:
+        raise HTTPException(status_code=404, detail="Nenhum APK publicado ainda.")
+
+    path = os.path.join(DOWNLOADS_DIR, filename)
+    version = manifest.get("version") if manifest else None
+    if not version:
+        # fallback: "meu-guarda-roupa-1.2.3.apk" -> "1.2.3"
+        version = filename.removesuffix(".apk").split("-")[-1]
+
+    download_url = str(request.url_for("download_file", filename=filename))
+    # request.url_for uses uvicorn's view of the scheme/host, which is
+    # plain http/container-hostname because uvicorn doesn't trust proxy
+    # headers from non-loopback peers. Traefik always sends these headers,
+    # so build the public origin from them ourselves.
+    scheme = request.headers.get("x-forwarded-proto", "https")
+    host = request.headers.get("x-forwarded-host", settings.app_host)
+    base = f"{scheme}://{host}"
+    return JSONResponse(
+        {
+            "version": version,
+            "version_code": (manifest or {}).get("versionCode"),
+            "filename": filename,
+            "size_bytes": os.path.getsize(path),
+            "updated_at": (manifest or {}).get("updatedAt"),
+            "download_url": f"{base}/downloads/{filename}",
+            "latest_url": f"{base}/downloads/latest.apk",
+        }
+    )
 
 
 @app.get("/downloads/{filename}")
