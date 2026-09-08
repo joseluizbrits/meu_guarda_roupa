@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, Platform, Pressable, StyleSheet, Switch } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { File, Paths } from 'expo-file-system';
@@ -146,6 +146,7 @@ export default function SelectPiecesScreen() {
   const photoUri = useCapturedGarmentPhotoStore((state) => state.uri);
   const photoW = useCapturedGarmentPhotoStore((state) => state.width);
   const photoH = useCapturedGarmentPhotoStore((state) => state.height);
+  const contentType = useCapturedGarmentPhotoStore((state) => state.contentType);
   const detections = useCapturedGarmentPhotoStore((state) => state.detections);
   const photoAssetId = useCapturedGarmentPhotoStore((state) => state.photoAssetId);
   const setDetections = useCapturedGarmentPhotoStore((state) => state.setDetections);
@@ -156,6 +157,41 @@ export default function SelectPiecesScreen() {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Guards the one-shot auto-detect: when the user lands here right after
+  // capturing (no detections stored yet) we upload the raw photo and run
+  // the backend detect automatically. A ref keeps this from re-firing on
+  // re-renders or after a failed attempt (which must be re-triggered by the
+  // explicit "Tentar novamente" button, not loop forever).
+  const autoDetectAttempted = useRef(false);
+
+  useEffect(() => {
+    if (detections !== null || autoDetectAttempted.current) {
+      return;
+    }
+    autoDetectAttempted.current = true;
+    let cancelled = false;
+    (async () => {
+      if (!photoUri || !contentType) {
+        return;
+      }
+      try {
+        const bytes = await readUriBytes(photoUri);
+        const { asset_id, upload_url } = await requestUploadUrl('garment_photo', contentType);
+        await uploadToPresignedUrl(upload_url, bytes, contentType);
+        const data = await detectGarments(asset_id);
+        if (!cancelled) {
+          setDetections(data.pieces, asset_id);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Detecção falhou. Tente novamente.');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [detections, photoUri, contentType, setDetections]);
 
   const pieces = useMemo(() => detections ?? [], [detections]);
   useEffect(() => {
@@ -274,6 +310,9 @@ export default function SelectPiecesScreen() {
           <View style={styles.emptyActions}>
             <Button title="Voltar" onPress={() => router.back()} disabled={busy} style={styles.secondaryButton} />
             <Button title="Tentar novamente" onPress={handleRetry} loading={busy} disabled={busy} />
+          </View>
+          <View style={styles.emptyActions}>
+            <Button title="Adicionar manualmente" onPress={() => router.replace('/wardrobe/tag')} disabled={busy} />
           </View>
         </View>
       </>

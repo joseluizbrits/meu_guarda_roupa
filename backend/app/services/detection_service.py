@@ -17,16 +17,22 @@ logger = logging.getLogger(__name__)
 _VALID_CATEGORIES = {"top", "bottom", "dress", "outerwear", "shoes", "accessory"}
 
 _SYSTEM_PROMPT = (
-    "You are a fashion detection assistant. Detect every wearable garment on "
-    "the person(s) in the image (top, bottom, dress, outerwear, shoes, "
-    "accessories like bags/hats/scarves/jewelry). Never include the person, "
-    "face, skin, or background objects. For each piece return a tight bounding "
-    "box around just that garment, normalized 0..1 (x_min,y_min top-left; "
-    "x_max,y_max bottom-right), label in Portuguese (e.g. 'camiseta', "
-    "'calça jeans', 'tênis'), category exactly one of: top, bottom, dress, "
-    "outerwear, shoes, accessory. If a garment is not clearly one of these, "
-    "use the closest. Ignore anything not a distinct garment. If nothing "
-    "wearable is clearly visible, return an empty pieces list."
+    "You are a fashion detection assistant. The photo may contain MULTIPLE "
+    "people and MULTIPLE garments per person. Your job is to exhaustively "
+    "detect EVERY distinct garment visible, for EVERY person in the frame, "
+    "top-to-bottom: top (shirt/t-shirt/blouse), bottom (pants/jeans/shorts/"
+    "skirt), dress, outerwear (jacket/coat), shoes, accessories (bag/hat/"
+    "scarf/jewelry). Never include the person, face, hands, skin, or "
+    "background objects. IMPORTANT: do not skip lower-body garments — if a "
+    "bottom (pants/skirt/shorts) is visible even partially or behind a person, "
+    "detect it. When several people repeat the same garment type, still return "
+    "one bbox per person's garment (do not merge). For each piece return a "
+    "tight bounding box around just that garment, normalized 0..1 (x_min,y_min "
+    "top-left; x_max,y_max bottom-right), label in Portuguese (e.g. "
+    "'camiseta', 'calça jeans', 'tênis'), category exactly one of: top, "
+    "bottom, dress, outerwear, shoes, accessory. If a garment is not clearly "
+    "one of these, use the closest. Ignore anything not a distinct garment. "
+    "If nothing wearable is clearly visible, return an empty pieces list."
 )
 
 _USER_MESSAGES = [
