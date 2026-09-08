@@ -32,7 +32,8 @@ export const useCapturedGarmentPhotoStore = create<CapturedGarmentPhotoState>((s
   detections: null,
   photoAssetId: null,
   sourceCategoryHint: null,
-  setPhoto: (uri, width, height, contentType) => set({ uri, width, height, contentType }),
+  setPhoto: (uri, width, height, contentType) =>
+    set({ uri, width, height, contentType, detections: null, photoAssetId: null, sourceCategoryHint: null }),
   setDetections: (detections, photoAssetId, sourceCategoryHint = null) => set({ detections, photoAssetId, sourceCategoryHint }),
   clear: () => set({ uri: null, width: null, height: null, contentType: null, detections: null, photoAssetId: null, sourceCategoryHint: null }),
 }));
