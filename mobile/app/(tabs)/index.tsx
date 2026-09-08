@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { useFocusEffect } from 'expo-router';
@@ -106,19 +106,46 @@ export default function FittingRoomScreen() {
     };
   }, []);
 
-  // Only items with a real renderable texture can be worn — a raw photo
-  // (background and all) stamped on the avatar would render a visible
-  // rectangle, not a garment. The AI transparent texture wins over the
-  // on-device cutout. `accessory` also stays closet-only (no body region —
-  // see `REGION_BY_CATEGORY`).
-  const wearableItems = useMemo(
-    () =>
-      wardrobeItems.filter(
-        (item) =>
-          (item.ai_texture_url ?? item.texture_url) && item.category !== 'accessory'
-      ),
+  // The picker shows EVERY non-accessory item — not just the textured ones.
+  // A freshly-created piece often has no texture yet (backend AI photo runs
+  // as a background job / the on-device cutout failed); hiding it made the
+  // picker look like pieces were lost. Items without `ai_texture_url` /
+  // `texture_url` render dimmed with a "processando…" badge and only become
+  // tappable once a texture arrives (see the polling effect below).
+  const pickerItems = useMemo(
+    () => wardrobeItems.filter((item) => item.category !== 'accessory'),
     [wardrobeItems]
   );
+
+  const hasPendingTextures = useMemo(
+    () => pickerItems.some((item) => !item.ai_texture_url && !item.texture_url),
+    [pickerItems]
+  );
+
+  // Poll while any item is still missing its wear texture (AI job runs
+  // server-side after creation). Stops after ~72s so a permanently-failed
+  // item doesn't ping forever.
+  const pollCountRef = useRef(0);
+  useEffect(() => {
+    if (!hasPendingTextures || pollCountRef.current >= 12) {
+      return;
+    }
+    const timer = setTimeout(async () => {
+      pollCountRef.current += 1;
+      try {
+        const result = await listWardrobeItems();
+        setWardrobeItems(result);
+        warmTextureCache(
+          result
+            .map((item) => item.ai_texture_url ?? item.texture_url)
+            .filter((url): url is string => Boolean(url))
+        );
+      } catch {
+        // Keep current list; next poll or focus will retry.
+      }
+    }, 6000);
+    return () => clearTimeout(timer);
+  }, [hasPendingTextures, pollCountRef, wardrobeItems]);
 
   const equippedGarments = useMemo(
     () =>
@@ -140,9 +167,14 @@ export default function FittingRoomScreen() {
     [equippedByRegion]
   );
 
+  const hasTexture = useCallback(
+    (item: WardrobeItemRead) => Boolean(item.ai_texture_url ?? item.texture_url),
+    []
+  );
+
   function toggleItem(item: WardrobeItemRead) {
     const region = REGION_BY_CATEGORY[item.category];
-    if (!region) {
+    if (!region || !hasTexture(item)) {
       return;
     }
     setEquippedByRegion((prev) => {
@@ -207,7 +239,7 @@ export default function FittingRoomScreen() {
         />
       </View>
 
-      {wearableItems.length > 0 ? (
+      {pickerItems.length > 0 ? (
         <View style={styles.picker}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickerContent}>
             {equippedCount > 0 ? (
@@ -219,22 +251,38 @@ export default function FittingRoomScreen() {
                 <Text style={styles.takeOffText}>Take off</Text>
               </Pressable>
             ) : null}
-            {wearableItems.map((item) => (
-              <Pressable
-                key={item.id}
-                style={[styles.pickerItem, isEquipped(item) && styles.pickerItemActive]}
-                onPress={() => toggleItem(item)}
-                accessibilityRole="button"
-                accessibilityLabel={`Try on ${item.category}`}>
-                <Image
-                  source={{ uri: item.ai_photo_url ?? item.texture_url! }}
-                  style={styles.pickerThumbnail}
-                  contentFit="contain"
-                  cachePolicy="disk"
-                  transition={150}
-                />
-              </Pressable>
-            ))}
+            {pickerItems.map((item) => {
+              const ready = hasTexture(item);
+              return (
+                <Pressable
+                  key={item.id}
+                  disabled={!ready}
+                  style={[
+                    styles.pickerItem,
+                    isEquipped(item) && styles.pickerItemActive,
+                    !ready && styles.pickerItemPending,
+                  ]}
+                  onPress={() => toggleItem(item)}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: !ready }}
+                  accessibilityLabel={`Try on ${item.category}`}>
+                  <Image
+                    source={{ uri: item.ai_photo_url ?? item.texture_url ?? item.photo_url }}
+                    style={styles.pickerThumbnail}
+                    contentFit="cover"
+                    cachePolicy="disk"
+                    transition={150}
+                  />
+                  {!ready ? (
+                    <View style={styles.pickerBadge}>
+                      <Text style={styles.pickerBadgeText}>
+                        {item.ai_photo_url ? 'sem corte' : 'processando…'}
+                      </Text>
+                    </View>
+                  ) : null}
+                </Pressable>
+              );
+            })}
           </ScrollView>
         </View>
       ) : null}
@@ -284,6 +332,23 @@ const styles = StyleSheet.create({
   },
   pickerItemActive: {
     borderColor: '#2f95dc',
+  },
+  pickerItemPending: {
+    opacity: 0.55,
+  },
+  pickerBadge: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingVertical: 2,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  pickerBadgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   pickerThumbnail: {
     width: '100%',

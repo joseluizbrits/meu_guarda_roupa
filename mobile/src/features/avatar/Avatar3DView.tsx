@@ -15,22 +15,10 @@ import { createDecal } from './decal';
 import { readUriBytes } from './faceTexture/readUriBytes';
 import { attachGarmentShell } from './garmentShell';
 
-// Radians of Y-axis rotation per pixel of horizontal drag. Free-spin (no
-// clamping) — simplest behavior and fine for an MVP turntable view.
 const ROTATE_SPEED = 0.012;
 const CAMERA_FOV_DEGREES = 45;
 // Extra headroom above/below the avatar so it doesn't touch the frame edges.
 const CAMERA_FRAMING_MARGIN = 1.35;
-
-// The rig's authored bind pose is closer to a T-pose than a natural stance
-// (arms extend outward and only slope down ~25-30 degrees) — looks broken
-// for a "look at your outfit" view. This angle was derived from the GLB's
-// own bind-pose joint matrices (each arm bone's local Z/"roll" axis is
-// aligned with world Z, so rotating around it swings the bone within the
-// body's width/height plane) and tuned against a render — rotating each
-// upper arm by 58 degrees rests the hand beside the outer thigh with no
-// clipping into the body, checked from the front, side, and back.
-const UPPER_ARM_DROP_RADIANS = THREE.MathUtils.degToRad(58);
 
 // Face decal placement. Offset from the `head` bone's real bind-pose
 // position (see `bindPose.ts` — the bone object's own live transform can't
@@ -97,15 +85,6 @@ function loadAvatarModel(): Promise<GLTF> {
 }
 
 /**
- * Rotates the rig's arm bones from the authored bind pose into a relaxed
- * "arms at the sides" pose. Static and one-shot.
- */
-function relaxArmsToSides(scene: THREE.Group) {
-  scene.getObjectByName('upperarm_L')?.rotateZ(-UPPER_ARM_DROP_RADIANS);
-  scene.getObjectByName('upperarm_R')?.rotateZ(UPPER_ARM_DROP_RADIANS);
-}
-
-/**
  * Adds a transparent face-photo decal, positioned at the `head` bone's real
  * bind-pose position.
  */
@@ -122,9 +101,10 @@ function attachFaceDecal(scene: THREE.Group, mesh: THREE.SkinnedMesh, faceTextur
 
 /**
  * Renders the rigged humanoid avatar (`assets/models/BaseHuman.glb`) and
- * lets the user spin it around the Y axis by dragging horizontally.
- *
- * Performance model:
+ * lets the user spin it around the Y axis by dragging horizontally. The
+ * model's own authored pose is kept as-is — earlier we force-rotated the
+ * upper arms 58° into a "hands at the sides" stance, which read as crooked
+ * on the real device.
  * - The GLB is parsed once and cached module-level; textures are cached per
  *   URL. Garment changes are reconciled in-place on the scene graph — the
  *   `GLView` context is never torn down for a swap (no remount `key`).
@@ -169,6 +149,28 @@ export function Avatar3DView({ faceTextureUrl, equippedGarments = [] }: Avatar3D
       }
     });
   }, []);
+
+  // Syncs the WebGL viewport whenever the GLView gets its final layout
+  // (and on rotations/resizes). If the camera keeps the aspect captured at
+  // context creation — which can be 0×0 just before first layout — the
+  // avatar renders stretched/crooked.
+  const onLayout = useCallback(() => {
+    const gl = glRef.current;
+    const renderer = rendererRef.current;
+    const camera = cameraRef.current;
+    if (!gl || !renderer || !camera) {
+      return;
+    }
+    const width = gl.drawingBufferWidth;
+    const height = gl.drawingBufferHeight;
+    if (!width || !height) {
+      return;
+    }
+    renderer.setSize(width, height);
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+    requestRender();
+  }, [requestRender]);
 
   const panGesture = Gesture.Pan()
     .runOnJS(true)
@@ -228,7 +230,6 @@ export function Avatar3DView({ faceTextureUrl, equippedGarments = [] }: Avatar3D
       // back exactly as it was left.
       const modelScene = cloneSkinned(gltf.scene) as THREE.Group;
 
-      relaxArmsToSides(modelScene);
       const skinnedMesh = findSkinnedMesh(modelScene);
       skinnedMeshRef.current = skinnedMesh;
       // All garment shells attach under the avatar group (see the comment on
@@ -317,7 +318,7 @@ export function Avatar3DView({ faceTextureUrl, equippedGarments = [] }: Avatar3D
 
   return (
     <GestureDetector gesture={panGesture}>
-      <View style={styles.container}>
+      <View style={styles.container} onLayout={onLayout}>
         <GLView style={styles.canvas} onContextCreate={onContextCreate} />
       </View>
     </GestureDetector>

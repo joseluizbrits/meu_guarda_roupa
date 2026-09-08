@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, Platform, Pressable, StyleSheet, Switch } from 'react-native';
+import type { SkImage } from '@shopify/react-native-skia';
 import { Stack, router } from 'expo-router';
 import { File, Paths } from 'expo-file-system';
 
@@ -17,32 +18,31 @@ import { tfliteSegmentationEngine } from '@/src/features/wardrobe/segmentation/t
 
 const THUMB_SIZE = 256;
 const VALID_CATEGORIES: WardrobeCategory[] = ['top', 'bottom', 'dress', 'outerwear', 'shoes', 'accessory'];
+type SkiaModule = Awaited<ReturnType<typeof loadSkia>>;
 
 function coerceCategory(value: string | null | undefined): WardrobeCategory {
   return VALID_CATEGORIES.includes(value as WardrobeCategory) ? (value as WardrobeCategory) : 'accessory';
 }
 
 /**
- * Crops the piece's normalized bbox out of the photo with Skia and encodes it
- * as a PNG file (native) or data URI (web). `out` is the output square side
- * in pixels (`THUMB_SIZE` for the grid preview, or `0` for the full-resolution
- * crop used before on-device segmentation — the crop keeps its own aspect
- * ratio then, only thumbnails are forced square with contain-fit letterbox).
+ * Crops the piece's normalized bbox out of a *pre-decoded* photo with Skia
+ * and encodes it as a PNG file (native) or data URI (web). `out` is the
+ * output square side in pixels (`THUMB_SIZE` for the grid preview, or `0`
+ * for the full-resolution crop used before on-device segmentation).
+ *
+ * The caller decodes the source photo ONCE (see `handleConfirm`) and reuses
+ * that `SkImage` for every piece — decoding a multi-megapixel photo five
+ * times in parallel is what silently OOM'd the grid confirm before.
  */
 async function cropPiecePhoto(
+  image: SkImage,
   piece: { box: { x_min: number; y_min: number; x_max: number; y_max: number } },
-  photoUri: string,
   photoW: number,
   photoH: number,
-  out: number
+  out: number,
+  skia: SkiaModule
 ): Promise<string> {
-  const { Skia, ImageFormat } = await loadSkia();
-  const data = await Skia.Data.fromURI(photoUri);
-  const image = Skia.Image.MakeImageFromEncoded(data);
-  if (!image) {
-    throw new Error('select-pieces: could not decode source photo.');
-  }
-
+  const { Skia, ImageFormat } = skia;
   const srcX = Math.max(0, Math.min(photoW - 1, Math.round(piece.box.x_min * photoW)));
   const srcY = Math.max(0, Math.min(photoH - 1, Math.round(piece.box.y_min * photoH)));
   const srcW = Math.max(1, Math.min(photoW - srcX, Math.round(piece.box.x_max * photoW) - srcX));
@@ -99,15 +99,23 @@ function PieceCard({ piece, index, kept, category, photoUri, photoW, photoH, onT
 
   useEffect(() => {
     let cancelled = false;
-    cropPiecePhoto(piece, photoUri, photoW, photoH, THUMB_SIZE)
-      .then((uri) => {
+    (async () => {
+      try {
+        const skia = await loadSkia();
+        const { Skia } = skia;
+        const data = await Skia.Data.fromURI(photoUri);
+        const image = Skia.Image.MakeImageFromEncoded(data);
+        if (!image) {
+          throw new Error('select-pieces: could not decode source photo.');
+        }
+        const uri = await cropPiecePhoto(image, piece, photoW, photoH, THUMB_SIZE, skia);
         if (!cancelled) {
           setThumb(uri);
         }
-      })
-      .catch(() => {
+      } catch {
         // Thumbnail is a preview nicety — leave a spinner placeholder.
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -251,30 +259,45 @@ export default function SelectPiecesScreen() {
     setError(null);
     setBusy(true);
     try {
-      // Phase 1: full-res crop + on-device cutout per piece, in parallel.
-      // allSettled on purpose — one bad piece must not block the rest.
+      // Phase 1: decode the source photo ONCE, then crop + on-device cutout
+      // per piece SEQUENTIALLY. (Decoding a multi-megapixel photo once per
+      // piece in parallel is what previously OOM'd mid-grid — and the old
+      // allSettled silently dropped the failed pieces, so the user picked 5
+      // and only 2 reached the closet.) A piece that still fails is counted
+      // and surfaced, never silently dropped.
       setProgress(`Preparando peças 0/${selectedIndexes.length}…`);
-      const jobs = selectedIndexes.map(async (pieceIndex, jobIndex) => {
+      const skia = await loadSkia();
+      const { Skia } = skia;
+      const data = await Skia.Data.fromURI(photoUri);
+      const sourceImage = Skia.Image.MakeImageFromEncoded(data);
+      if (!sourceImage) {
+        throw new Error('select-pieces: could not decode source photo.');
+      }
+
+      const ready: { category: WardrobeCategory; photoUri: string; label: string }[] = [];
+      const droppedLabels: string[] = [];
+      for (let job = 0; job < selectedIndexes.length; job += 1) {
+        const pieceIndex = selectedIndexes[job];
         const piece = pieces[pieceIndex];
-        setProgress(`Preparando peças ${jobIndex + 1}/${selectedIndexes.length}…`);
-        const cropUri = await cropPiecePhoto(piece, photoUri, photoW, photoH, 0);
-        let photo = cropUri;
-        if (Platform.OS !== 'web') {
-          try {
-            const segmentation = await tfliteSegmentationEngine.segment(cropUri);
-            if (segmentation) {
-              photo = await extractGarmentCutout(cropUri, segmentation.maskUri);
+        setProgress(`Preparando peças ${job + 1}/${selectedIndexes.length}…`);
+        try {
+          const cropUri = await cropPiecePhoto(sourceImage, piece, photoW, photoH, 0, skia);
+          let photo = cropUri;
+          if (Platform.OS !== 'web') {
+            try {
+              const segmentation = await tfliteSegmentationEngine.segment(cropUri);
+              if (segmentation) {
+                photo = await extractGarmentCutout(cropUri, segmentation.maskUri);
+              }
+            } catch {
+              // Fall back to the plain crop; reprocess is available later.
             }
-          } catch {
-            // Fall back to the plain crop; reprocess is available later.
           }
+          ready.push({ category: categories[pieceIndex], photoUri: photo, label: piece.label });
+        } catch {
+          droppedLabels.push(piece.label);
         }
-        return { category: categories[pieceIndex], photoUri: photo };
-      });
-      const settled = await Promise.allSettled(jobs);
-      const ready = settled
-        .filter((r): r is PromiseFulfilledResult<{ category: WardrobeCategory; photoUri: string }> => r.status === 'fulfilled')
-        .map((r) => r.value);
+      }
 
       // Phase 2: upload + create one wardrobe item per ready piece.
       let created = 0;
@@ -298,10 +321,17 @@ export default function SelectPiecesScreen() {
       }
       clearPhoto();
       router.replace('/closet');
+      const messages: string[] = [];
+      if (droppedLabels.length > 0) {
+        messages.push(`${droppedLabels.length} de ${selectedIndexes.length} peças não puderam ser processadas: ${droppedLabels.join(', ')}`);
+      }
       if (failed > 0) {
         // Partial success still navigates; surface the shortfall after the
         // move so the user notices but is not blocked.
-        setTimeout(() => alert(`${failed} de ${ready.length} peças não puderam ser adicionadas.`), 300);
+        messages.push(`${failed} de ${ready.length} peças não puderam ser adicionadas.`);
+      }
+      if (messages.length > 0) {
+        setTimeout(() => alert(messages.join('\n')), 300);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Algo deu errado. Tente novamente.');
