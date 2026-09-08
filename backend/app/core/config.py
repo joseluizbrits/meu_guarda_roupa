@@ -14,6 +14,10 @@ class Settings(BaseSettings):
         "postgresql+asyncpg://postgres:postgres@localhost:5432/meu_guarda_roupa"
     )
 
+    # Public hostname the app is served from (Traefik Host() rule). Used to
+    # build absolute URLs for download endpoints behind the proxy.
+    app_host: str = "localhost"
+
     minio_endpoint: str = "localhost:9000"
     # Host embedded in presigned upload/download URLs — these are handed
     # directly to the mobile app / browser, which can't resolve the internal

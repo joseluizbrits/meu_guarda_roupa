@@ -7,8 +7,8 @@ name: meu-guarda-roupa
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: postgres
-    hostname: postgres
+    container_name: meu-guarda-postgres
+    hostname: meu-guarda-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -24,19 +24,23 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
-    container_name: minio
-    hostname: minio
+    container_name: meu-guarda-minio
+    hostname: meu-guarda-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-      # Dev-only permissive CORS so a browser (expo start --web) can PUT/GET
-      # presigned URLs directly — tighten to an explicit origin before prod.
-      MINIO_API_CORS_ALLOW_ORIGIN: "*"
+      # Tightened CORS — only the app domain.
+      MINIO_API_CORS_ALLOW_ORIGIN: "https://${APP_HOST}"
     volumes:
       - minio_data:/data
     networks:
@@ -49,26 +53,47 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  migrate:
+    build:
+      context: ../backend
+    container_name: meu-guarda-migrate
+    hostname: meu-guarda-migrate
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@meu-guarda-postgres:5432/${POSTGRES_DB}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - default
+    # Run alembic upgrade then exit
+    command: ["python", "-m", "alembic", "upgrade", "head"]
+    restart: "no"
+    profiles:
+      - tools
 
   backend:
     build:
       context: ../backend
-    container_name: backend
-    hostname: backend
+    container_name: meu-guarda-backend
+    hostname: meu-guarda-backend
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      MINIO_ENDPOINT: minio:9000
-      # Presigned URLs are handed to the mobile app / browser, which can't
-      # resolve the internal Docker hostname "minio" — they need a host
-      # reachable from the phone/LAN, same reasoning as EXPO_PUBLIC_API_URL.
-      MINIO_PUBLIC_ENDPOINT: 192.168.0.36:9000
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@meu-guarda-postgres:5432/${POSTGRES_DB}
+      MINIO_ENDPOINT: meu-guarda-minio:9000
+      # Presigned URLs handed to mobile app — need host-reachable IP.
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT}
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
-      # Powers ai_image_service.py's clean-product-photo generation. Empty
-      # (unset in infra/.env) just leaves that feature off — see
-      # Settings.openai_api_key's own doc comment.
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      APP_HOST: ${APP_HOST}
+    volumes:
+      - ./downloads:/app/downloads
     depends_on:
       postgres:
         condition: service_healthy
@@ -77,20 +102,24 @@ services:
     networks:
       - default
       - traefik_proxy
-    ports:
-      - "8000:8000"
     labels:
-      traefik.enable: "true"
-      traefik.docker.network: traefik_proxy
-      traefik.http.routers.guardaroupa-backend.entrypoints: web
-      traefik.http.routers.guardaroupa-backend.rule: Host(`api.guardaroupa.localhost`)
-      traefik.http.services.guardaroupa-backend.loadbalancer.server.port: "8000"
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik_proxy"
+      - "traefik.http.routers.meu-guarda-backend.rule=Host(`${APP_HOST}`)"
+      - "traefik.http.routers.meu-guarda-backend.entrypoints=websecure"
+      - "traefik.http.routers.meu-guarda-backend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.meu-guarda-backend.loadbalancer.server.port=8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   default:

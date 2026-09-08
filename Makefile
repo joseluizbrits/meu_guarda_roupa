@@ -17,3 +17,7 @@ android:
 ## Builda e roda o app nativo iOS (dispositivo/simulador, só macOS)
 ios:
 	cd mobile && npm run ios
+
+## Builda APK release e publica em infra/downloads (servido em /downloads)
+apk:
+	scripts/build-apk.sh
