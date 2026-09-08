@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 
 class AssetUploadRequest(BaseModel):
-    kind: Literal["face_texture", "garment_photo", "garment_texture", "garment_ai_photo"]
+    kind: Literal["face_texture", "garment_photo", "garment_texture", "garment_ai_photo", "garment_mask"]
     content_type: str
 
 

@@ -71,3 +71,7 @@ export async function setWardrobeItemTexture(id: string, textureAssetId: string)
 export async function deleteWardrobeItem(id: string): Promise<void> {
   await api.delete<void>(`/api/v1/wardrobe-items/${id}`);
 }
+
+export async function virtualizeWardrobeItem(id: string, payload: { mask_asset_id: string }): Promise<WardrobeItemRead> {
+  return api.post<WardrobeItemRead>(`/api/v1/wardrobe-items/${id}/virtualize`, payload);
+}

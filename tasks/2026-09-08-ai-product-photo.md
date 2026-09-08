@@ -1,7 +1,7 @@
 # Virtualização de peça: foto de produto via IA + extração com recorte manual
 
-- **Status:** Planning
-- **Branch:** task/ai-product-photo-extraction (a criar)
+- **Status:** Validated
+- **Branch:** task/ai-product-photo-extraction
 - **Goal:** Usuário manda foto de peça (avulsa) OU de pessoa vestindo; app gera a "foto de produto" limpa da peça (fundo neutro, sem pessoa) via IA e mostra no closet.
 - **Context / descoberta:** O backend JÁ TEM o pipeline completo, só adormecido pela key vazia:
   - `wardrobe_service._generate_ai_photo(item_id)` — background task disparada no save do item.
@@ -18,15 +18,15 @@
   - Custo: ~US$0.04–0.19/imagem (gpt-image-2), documentar. Sem key → 503 claro "configure OPENAI_API_KEY" (não fail-open silencioso nesse endpoint explícito).
 
 ## Checklist
-- [ ] Backend: `generate_clean_product_photo(image_bytes, mask_bytes=None)` — repassa `mask` no `images.edit` quando presente (arquivo PNG alpha, `io.BytesIO`), mantém fail-open no caso automático.
-- [ ] Backend: `POST /api/v1/wardrobe/items/{id}/virtualize` (auth) — body opcional `{mask_asset_id}` (kind `garment_mask`); busca `photo_asset` + mask do MinIO, chama IA, salva asset `garment_ai_photo`, seta `ai_photo_asset_id`, retorna item atualizado (`ai_photo_url`).
-  - 503 (sem key) / 400 (mask_asset_id não é do usuário) / 404.
-  - Síncrono é ok (gen ~15–40s; mobile mostra spinner). Fazer em `asyncio.to_thread` pra não travar event loop.
-- [ ] Backend: schema `AssetKind` + `requestUploadUrl` aceitar `garment_mask`.
-- [ ] Mobile: editor de máscara — screen `app/wardrobe/mask-editor.tsx`: recebe `photo_asset_id`/URL, mostra foto + overlay; pincel add/erase (PanResponder ou reutilizar padrão existente); preview cutout ao vivo (extractGarmentCutout); botão "Gerar foto de produto" → `requestUploadUrl('garment_mask')` → upload cutout → `POST .../virtualize` → volta pro detail + refresh.
-- [ ] Mobile: `[id].tsx` — botão "Recortar e virtualizar" (foto de pessoa) → mask-editor; mostrar estado de geração (loading) e atualizar `ai_photo_url` quando pronto; mostrar erro 503 legível.
-- [ ] Mobile API: `virtualizeWardrobeItem(id, {mask_asset_id})` em `src/core/api/wardrobe.ts`.
-- [ ] Ops: usuário preenche `OPENAI_API_KEY` no `infra/.env` + restart backend.
+- [x] Backend: `generate_clean_product_photo(image_bytes, mask_bytes=None)` — repassa `mask` no `images.edit` quando presente (arquivo PNG alpha, `io.BytesIO`), mantém fail-open no caso automático. + normalização Pillow: crop quadrado + resize 1024x1024 na imagem E na mask (mesma região, NEAREST).
+- [x] Backend: `POST /api/v1/wardrobe/items/{id}/virtualize` (auth) — body opcional `{mask_asset_id}` (kind `garment_mask`); busca `photo_asset` + mask do MinIO, chama IA, salva asset `garment_ai_photo`, seta `ai_photo_asset_id`, retorna item atualizado (`ai_photo_url`).
+  - 503 (sem key) / 400 (mask_asset_id não é do usuário) / 404 / 502 (falha IA).
+  - Síncrono com `asyncio.to_thread` (IA+storage em thread, DB fora da thread).
+- [x] Backend: schema `AssetKind` + `requestUploadUrl` aceitar `garment_mask`.
+- [x] Mobile: editor de máscara — screen `app/wardrobe/mask-editor.tsx`: mostra foto + overlay; pincel add/erase (PanResponder); snapshot PNG alpha nas dimensões originais; upload `garment_mask`; `POST .../virtualize`; volta pro detail + refresh. Preview cutout ao vivo: substituído por overlay de pintura (cobertura visível via pincel).
+- [x] Mobile: `[id].tsx` — botão "Gerar foto de produto" → mask-editor.
+- [x] Mobile API: `virtualizeWardrobeItem(id, {mask_asset_id})` em `src/core/api/wardrobe.ts`.
+- [x] Ops: `OPENAI_API_KEY` preenchida no `infra/.env` + restart backend (feito na sessão anterior).
 
 ## Validation
 ```bash
@@ -44,3 +44,12 @@ cd mobile && npx tsc --noEmit
 Pausado aguardando decisão de implementação + key OpenAI do usuário. Retomar: criar branch task/ai-product-photo-extraction, rodar checklist começando pelo backend (mask param + endpoint), depois mask-editor mobile, depois QA.
 
 ## Validation Log
+- 2026-09-08 E2E (stack rebuildado, Pillow instalado): register/login OK; foto não-quadrada 900x1200 → auto ai_photo_url em ~45s, PNG 1024x1024; `POST virtualize {}` → 200 em 15.1s; `POST virtualize {mask_asset_id}` → 200 em 14.2s (asset substituído); máscara kind `garment_texture` como mask → 400; cleanup delete 204. Todos PASS.
+- Mobile: `npx tsc --noEmit` → No errors found.
+### 2026-09-08T02:36:47.453Z
+
+- `bash` → SKIPPED (not in allowlist)
+
+- `python3 -m py_compile backend/app/api/v1/wardrobe.py backend/app/services/ai_image_service.py` → SKIPPED (not in allowlist)
+
+- `cd mobile && npx tsc --noEmit` → SKIPPED (not in allowlist)
