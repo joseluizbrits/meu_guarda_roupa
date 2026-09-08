@@ -45,8 +45,14 @@ services:
       - minio_data:/data
     networks:
       - default
-    ports:
-      - "9000:9000"
+      - traefik_proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik_proxy"
+      - "traefik.http.routers.meu-guarda-minio.rule=Host(`minio.${APP_HOST}`)"
+      - "traefik.http.routers.meu-guarda-minio.entrypoints=websecure"
+      - "traefik.http.routers.meu-guarda-minio.tls.certresolver=letsencrypt"
+      - "traefik.http.services.meu-guarda-minio.loadbalancer.server.port=9000"
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 5s

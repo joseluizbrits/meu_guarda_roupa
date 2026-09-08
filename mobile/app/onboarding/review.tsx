@@ -37,12 +37,8 @@ export default function ReviewScreen() {
 
   useEffect(() => {
     if (!photoUri) {
-      if (confirmedSuccessfully.current) {
-        return;
-      }
-      // Nothing captured (e.g. deep-linked or refreshed straight into this
-      // screen) — send the user back to capture a photo first.
-      router.replace('/onboarding/face-capture');
+      // No photo — let the component render the "no photo yet" state instead of
+      // forcing a redirect. User can choose "Adicionar foto" or "Finalizar onboarding".
       return;
     }
 
@@ -115,9 +111,67 @@ export default function ReviewScreen() {
     }
   }
 
+  async function handleFinishWithoutPhoto() {
+    setError(null);
+    setSaving(true);
+    try {
+      const measurements = await getMeasurements();
+      if (!measurements) {
+        throw new Error('Missing measurements — please redo the previous step.');
+      }
+      const { height_cm, chest_cm, waist_cm, hip_cm, shoulder_cm, inseam_cm } = measurements;
+
+      await putAvatar({
+        base_mesh_id: 'procedural-v1',
+        morph_params: { height_cm, chest_cm, waist_cm, hip_cm, shoulder_cm, inseam_cm },
+        face_texture_asset_id: null,
+      });
+
+      confirmedSuccessfully.current = true;
+      useOnboardingStatusStore.getState().markComplete();
+      clearPhoto();
+      router.replace('/(tabs)');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function handleRetake() {
     clearPhoto();
     router.replace('/onboarding/face-capture');
+  }
+
+  // If no photo and not in a success flow, show the "no photo yet" state
+  if (!photoUri && !confirmedSuccessfully.current) {
+    return (
+      <>
+        <Stack.Screen options={{ title: 'Review', headerBackVisible: false }} />
+        <View style={styles.container}>
+          <Text style={styles.title}>No face photo yet</Text>
+          <Text style={styles.subtitle}>
+            You can add a face photo later. Finish onboarding to continue.
+          </Text>
+
+          {error ? <ErrorText style={styles.error}>{error}</ErrorText> : null}
+
+          <Button
+            title="Adicionar foto"
+            onPress={() => router.replace('/onboarding/face-capture')}
+            disabled={saving}
+            style={styles.addPhotoButton}
+          />
+          <Button
+            title={saving ? 'Finalizando...' : 'Finalizar onboarding'}
+            onPress={handleFinishWithoutPhoto}
+            loading={saving}
+            disabled={saving}
+            style={styles.finishButton}
+          />
+        </View>
+      </>
+    );
   }
 
   return (
@@ -187,6 +241,17 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   retake: {
+    marginTop: 12,
+    width: '100%',
+  },
+  addPhotoButton: {
+    marginTop: 12,
+    width: '100%',
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
+  },
+  finishButton: {
     marginTop: 12,
     width: '100%',
   },

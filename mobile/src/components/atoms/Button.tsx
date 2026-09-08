@@ -1,4 +1,4 @@
-import { ActivityIndicator, Pressable, PressableProps, StyleSheet, Text } from 'react-native';
+import { ActivityIndicator, Pressable, PressableProps, StyleSheet, Text, ViewStyle } from 'react-native';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -6,9 +6,10 @@ import { useColorScheme } from '@/components/useColorScheme';
 type ButtonProps = Omit<PressableProps, 'style'> & {
   title: string;
   loading?: boolean;
+  style?: ViewStyle;
 };
 
-export function Button({ title, loading, disabled, ...pressableProps }: ButtonProps) {
+export function Button({ title, loading, disabled, style, ...pressableProps }: ButtonProps) {
   const colorScheme = useColorScheme();
   const tint = Colors[colorScheme].tint;
   const isDisabled = disabled || loading;
@@ -22,6 +23,7 @@ export function Button({ title, loading, disabled, ...pressableProps }: ButtonPr
       style={({ pressed }) => [
         styles.button,
         { backgroundColor: tint, opacity: isDisabled ? 0.5 : pressed ? 0.8 : 1 },
+        style,
       ]}>
       {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.text}>{title}</Text>}
     </Pressable>

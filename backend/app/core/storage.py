@@ -20,9 +20,13 @@ s3_client = boto3.client(
 # internal-Docker-hostname endpoint would produce URLs the mobile app/browser
 # can't resolve, so signing goes through this client instead, pointed at a
 # host the client device can actually reach.
+public_endpoint = settings.minio_public_endpoint
+if "://" not in public_endpoint:
+    public_endpoint = f"http://{public_endpoint}"
+
 _s3_public_client = boto3.client(
     "s3",
-    endpoint_url=f"http://{settings.minio_public_endpoint}",
+    endpoint_url=public_endpoint,
     aws_access_key_id=settings.minio_access_key,
     aws_secret_access_key=settings.minio_secret_key,
     region_name="us-east-1",

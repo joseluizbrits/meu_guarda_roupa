@@ -59,6 +59,14 @@ export default function FaceCaptureScreen() {
             We use your camera once to capture a face photo for your avatar. It is never shared.
           </Text>
           <Button title="Grant camera access" onPress={requestPermission} />
+          <Button
+            title="Pular por enquanto"
+            onPress={() => {
+              useCapturedPhotoStore.getState().clear();
+              router.replace('/onboarding/review');
+            }}
+            style={styles.skipButton}
+          />
         </View>
       </>
     );
@@ -82,6 +90,14 @@ export default function FaceCaptureScreen() {
             title={capturing ? 'Capturing...' : 'Capture'}
             onPress={handleCapture}
             loading={capturing}
+          />
+          <Button
+            title="Pular por enquanto"
+            onPress={() => {
+              useCapturedPhotoStore.getState().clear();
+              router.replace('/onboarding/review');
+            }}
+            style={styles.skipButton}
           />
         </View>
       </View>
@@ -140,5 +156,11 @@ const styles = StyleSheet.create({
   },
   controls: {
     padding: 24,
+  },
+  skipButton: {
+    marginTop: 12,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
   },
 });
