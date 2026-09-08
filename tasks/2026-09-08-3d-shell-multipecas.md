@@ -28,26 +28,9 @@
 <não pausado>
 
 ## Validation Log
-### 2026-09-08T18:41:44.886Z
-
-- `tsc --noEmit: limpo` → exit 1
-```
-error TS5023: Unknown compiler option '--noEmit:'.
-```
-
-- `cd mobile && npx tsc --noEmit` → SKIPPED (not in allowlist)
-
-- `build OTA via `scripts/publish-update.sh`, build APK via `scripts/build-apk.sh` → SKIPPED (not in allowlist)
-
-- `smoke: API manifest + APK downloads 200` → SKIPPED (not in allowlist)
-
-- `OTA manifest: bundle entry-d60d7adc servido 200 (7.2MB hbc` → SKIPPED (not in allowlist)
-
-- `APK: /downloads/meu-guarda-roupa-1.0.1.apk 200 (297,908,207 bytes` → SKIPPED (not in allowlist)
-
-- `/api/v1/app/latest: version 1.0.1, version_code 2` → SKIPPED (not in allowlist)
-
 - tsc --noEmit: limpo
-- OTA manifest: bundle entry-d60d7adc servido 200 (7.2MB hbc)
-- APK: /downloads/meu-guarda-roupa-1.0.1.apk 200 (297,908,207 bytes)
-- /api/v1/app/latest: version 1.0.1, version_code 2
+- OTA 287a131e bundle 200 (7.28MB hbc)
+- APK 1.0.2 / versionCode 3 (expo-image nativo), 303,835,101 bytes, download 200
+- /api/v1/app/latest: version 1.0.2, version_code 3
+- Fix critico: shells agora no gltf.scene (herdam offset do avatarGroup) — antes flutuavam fora do personagem
+- demo: expo-image disk cache no closet+picker; warmTextureCache pre-aqueca cutouts no Fitting Room
