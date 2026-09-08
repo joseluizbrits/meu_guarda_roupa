@@ -13,7 +13,7 @@
 - [x] `index.tsx` Fitting Room: state `equippedByRegion` com 1 por região (upper/lower/dress/feet), picker toggle, dress vs top/bottom exclusão mútua
 - [x] Remover `key={equippedItem?.id}` do Avatar3DView
 - [x] tsc --noEmit limpo
-- [ ] Build OTA + APK, publish
+- [x] Build OTA + APK, publish (OTA 7d69cf95, APK 1.0.1 rebuild 297908207 bytes)
 
 ## Subtasks
 - **frontend:** skeleton do shell 3D + refactor Avatar3DView + Fitting Room multi-peça
@@ -28,4 +28,7 @@
 <não pausado>
 
 ## Validation Log
-<pendente>
+- tsc --noEmit: limpo
+- OTA manifest: bundle entry-d60d7adc servido 200 (7.2MB hbc)
+- APK: /downloads/meu-guarda-roupa-1.0.1.apk 200 (297,908,207 bytes)
+- /api/v1/app/latest: version 1.0.1, version_code 2
