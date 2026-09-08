@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := up
 
-.PHONY: up back android ios
+.PHONY: up back android ios apk publish-js
 
 ## Sobe o projeto inteiro: stack do backend (detached) + servidor Expo (mobile)
 up: back
@@ -21,3 +21,7 @@ ios:
 ## Builda APK release e publica em infra/downloads (servido em /downloads)
 apk:
 	scripts/build-apk.sh
+
+## Publica atualização JS (OTA) via expo export -> infra/updates/{runtime}/{uuid}/ + symlink latest
+publish-js:
+	scripts/publish-update.sh

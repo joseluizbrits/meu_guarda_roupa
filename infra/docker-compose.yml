@@ -94,6 +94,7 @@ services:
       APP_HOST: ${APP_HOST}
     volumes:
       - ./downloads:/app/downloads
+      - ./updates:/app/updates
     depends_on:
       postgres:
         condition: service_healthy

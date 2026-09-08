@@ -6,7 +6,9 @@ from typing import AsyncIterator
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
+from app.api import updates as updates_api
 from app.api.v1 import router as api_v1_router
 from app.core.config import settings
 from app.core.storage import ensure_bucket_exists
@@ -97,7 +99,19 @@ async def csrf_protection(request: Request, call_next):
     return await call_next(request)
 
 
+# Updates manifest route MUST be defined BEFORE StaticFiles mount
+# to avoid route precedence issues (FastAPI matches routes in order)
+app.include_router(updates_api.router)
+
 app.include_router(api_v1_router, prefix="/api/v1")
+
+# Serve update assets from /app/updates at /api/updates/files/<runtime>/<updateId>/<file>
+# StaticFiles handles range requests, HEAD, streaming for large files
+app.mount(
+    "/api/updates/files",
+    StaticFiles(directory="/app/updates"),
+    name="updates-files",
+)
 
 
 @app.get("/health")
