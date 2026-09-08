@@ -36,6 +36,14 @@ class WardrobeItem(Base):
     ai_photo_asset_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("assets.id"), nullable=True
     )
+    # The AI clean product photo with its plain-white background keyed to
+    # transparent (see ai_image_service.make_transparent_texture) — the
+    # texture the 3D avatar wears. Populated together with ai_photo_asset_id,
+    # best-effort: stays null if keying fails, client falls back to the
+    # on-device cutout (texture_asset_id).
+    ai_texture_asset_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("assets.id"), nullable=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

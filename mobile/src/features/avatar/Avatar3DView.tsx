@@ -5,6 +5,7 @@ import { Renderer } from 'expo-three';
 import { Asset } from 'expo-asset';
 import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 import type { WardrobeCategory } from '@/src/core/api/wardrobe';
@@ -216,18 +217,29 @@ export function Avatar3DView({ faceTextureUrl, equippedGarments = [] }: Avatar3D
         return;
       }
 
-      relaxArmsToSides(gltf.scene);
-      const skinnedMesh = findSkinnedMesh(gltf.scene);
+      // The GLB is parsed once and cached module-level (`gltfCache`), but
+      // each mount works on its own DEEP CLONE of the scene: `relaxArmsToSides`,
+      // face-decal and garment-shell placement all mutate the graph, and the
+      // GLView remounts every time the user leaves and re-enters the tab. A
+      // shared scene would accumulate those edits visit after visit (arms
+      // rotate a second time, shells/decals pile up) — the mannequin ends up
+      // in a different stance every return. Cloning gives every mount a
+      // pristine bind pose + empty garment parent, so the avatar always comes
+      // back exactly as it was left.
+      const modelScene = cloneSkinned(gltf.scene) as THREE.Group;
+
+      relaxArmsToSides(modelScene);
+      const skinnedMesh = findSkinnedMesh(modelScene);
       skinnedMeshRef.current = skinnedMesh;
       // All garment shells attach under the avatar group (see the comment on
       // `garmentParentRef`) so they inherit its centering transform.
-      garmentParentRef.current = gltf.scene;
+      garmentParentRef.current = modelScene;
       if (skinnedMesh && faceTexture) {
-        attachFaceDecal(gltf.scene, skinnedMesh, faceTexture);
+        attachFaceDecal(modelScene, skinnedMesh, faceTexture);
       }
 
       // Camera distance derived from the loaded mesh's own bounding box.
-      const boundingBox = new THREE.Box3().setFromObject(gltf.scene);
+      const boundingBox = new THREE.Box3().setFromObject(modelScene);
       const avatarHeight = boundingBox.max.y - boundingBox.min.y;
       const verticalFovRadians = (CAMERA_FOV_DEGREES * Math.PI) / 180;
       const cameraDistance = (avatarHeight * CAMERA_FRAMING_MARGIN) / (2 * Math.tan(verticalFovRadians / 2));
@@ -235,7 +247,7 @@ export function Avatar3DView({ faceTextureUrl, equippedGarments = [] }: Avatar3D
 
       const avatarGroup = new THREE.Group();
       avatarGroup.name = 'avatar';
-      avatarGroup.add(gltf.scene);
+      avatarGroup.add(modelScene);
       avatarGroup.position.y = -(boundingBox.min.y + boundingBox.max.y) / 2;
       avatarGroupRef.current = avatarGroup;
       scene.add(avatarGroup);

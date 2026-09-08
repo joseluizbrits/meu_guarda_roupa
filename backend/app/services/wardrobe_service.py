@@ -67,6 +67,39 @@ async def create_item(
     return item
 
 
+async def _store_ai_texture(
+    db: AsyncSession, user_id: uuid.UUID, ai_bytes: bytes
+) -> uuid.UUID | None:
+    """Keys the AI product photo's white background to transparent, stores it
+    as a `garment_ai_texture` asset, and returns its id. Best-effort: any
+    failure is logged and returns None so the caller can keep the on-device
+    cutout as the avatar texture.
+    """
+    try:
+        texture_bytes = ai_image_service.make_transparent_texture(ai_bytes)
+    except Exception:
+        logger.exception("AI texture keying failed — keeping on-device cutout")
+        return None
+
+    storage_key = f"garment_ai_texture/{user_id}/{uuid.uuid4()}"
+    s3_client.put_object(
+        Bucket=settings.minio_bucket,
+        Key=storage_key,
+        Body=texture_bytes,
+        ContentType="image/png",
+    )
+    asset = Asset(
+        kind="garment_ai_texture",
+        storage_key=storage_key,
+        content_type="image/png",
+        owner_user_id=user_id,
+    )
+    db.add(asset)
+    await db.commit()
+    await db.refresh(asset)
+    return asset.id
+
+
 async def _generate_ai_photo(item_id: uuid.UUID) -> None:
     """Downloads the item's raw photo, asks OpenAI for a clean product-photo
     edit of it, and stores the result as a new asset + ai_photo_asset_id.
@@ -115,6 +148,13 @@ async def _generate_ai_photo(item_id: uuid.UUID) -> None:
             await db.refresh(asset)
 
             item.ai_photo_asset_id = asset.id
+
+            ai_texture_asset_id = await _store_ai_texture(
+                db, item.user_id, ai_bytes
+            )
+            if ai_texture_asset_id is not None:
+                item.ai_texture_asset_id = ai_texture_asset_id
+
             await db.commit()
     except Exception:
         logger.exception("AI clean product photo pipeline failed for item %s", item_id)
@@ -256,17 +296,26 @@ async def virtualize_item(
     photo_bytes = photo_object["Body"].read()
 
     # --- blocking AI + storage work in thread (no DB/async inside) ------
-    def _blocking() -> bytes | None:
-        return ai_image_service.generate_clean_product_photo(
+    def _blocking() -> tuple[bytes, bytes | None] | None:
+        ai = ai_image_service.generate_clean_product_photo(
             photo_bytes, mask_bytes
         )
+        if ai is None:
+            return None
+        try:
+            texture = ai_image_service.make_transparent_texture(ai)
+        except Exception:
+            logger.exception("AI texture keying failed — keeping on-device cutout")
+            texture = None
+        return ai, texture
 
-    ai_bytes = await asyncio.to_thread(_blocking)
-    if ai_bytes is None:
+    result = await asyncio.to_thread(_blocking)
+    if result is None:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="AI image generation failed — try again later.",
         )
+    ai_bytes, ai_texture_bytes = result
 
     storage_key = f"garment_ai_photo/{user.id}/{uuid.uuid4()}"
     s3_client.put_object(
@@ -276,7 +325,7 @@ async def virtualize_item(
         ContentType="image/png",
     )
 
-    # --- back in coroutine: persist asset + link to item ----------------
+    # --- back in coroutine: persist assets + link to item ----------------
     asset = Asset(
         kind="garment_ai_photo",
         storage_key=storage_key,
@@ -288,6 +337,26 @@ async def virtualize_item(
     await db.refresh(asset)
 
     item.ai_photo_asset_id = asset.id
+
+    if ai_texture_bytes is not None:
+        texture_storage_key = f"garment_ai_texture/{user.id}/{uuid.uuid4()}"
+        s3_client.put_object(
+            Bucket=settings.minio_bucket,
+            Key=texture_storage_key,
+            Body=ai_texture_bytes,
+            ContentType="image/png",
+        )
+        texture_asset = Asset(
+            kind="garment_ai_texture",
+            storage_key=texture_storage_key,
+            content_type="image/png",
+            owner_user_id=user.id,
+        )
+        db.add(texture_asset)
+        await db.commit()
+        await db.refresh(texture_asset)
+        item.ai_texture_asset_id = texture_asset.id
+
     await db.commit()
     await db.refresh(item)
     return item
@@ -311,6 +380,12 @@ async def to_read(db: AsyncSession, item: WardrobeItem) -> WardrobeItemRead:
             db, item.ai_photo_asset_id
         )
 
+    ai_texture_url = None
+    if item.ai_texture_asset_id is not None:
+        ai_texture_url = await asset_service.get_download_url(
+            db, item.ai_texture_asset_id
+        )
+
     return WardrobeItemRead(
         id=item.id,
         category=item.category,
@@ -320,6 +395,8 @@ async def to_read(db: AsyncSession, item: WardrobeItem) -> WardrobeItemRead:
         texture_url=texture_url,
         ai_photo_asset_id=item.ai_photo_asset_id,
         ai_photo_url=ai_photo_url,
+        ai_texture_asset_id=item.ai_texture_asset_id,
+        ai_texture_url=ai_texture_url,
         created_at=item.created_at,
         updated_at=item.updated_at,
     )

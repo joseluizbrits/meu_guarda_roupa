@@ -53,11 +53,16 @@ export default function FittingRoomScreen() {
         .then((result) => {
           if (!cancelled) {
             setWardrobeItems(result);
-            // Pre-warm the 3D texture cache with every wearable cutout so
+            // Pre-warm the 3D texture cache with every wearable texture so
             // trying an item on is instant (no fetch when the shell is
-            // attached later on). expo-image disk caches the picker
+            // attached later on). The AI transparent texture wins over the
+            // on-device cutout; expo-image disk caches the picker
             // thumbnails separately.
-            warmTextureCache(result.filter((item) => item.texture_url).map((item) => item.texture_url!));
+            warmTextureCache(
+              result
+                .map((item) => item.ai_texture_url ?? item.texture_url)
+                .filter((url): url is string => Boolean(url))
+            );
           }
         })
         .catch(() => {
@@ -101,20 +106,32 @@ export default function FittingRoomScreen() {
     };
   }, []);
 
-  // Only items with a real segmented cutout can be worn — a raw photo
+  // Only items with a real renderable texture can be worn — a raw photo
   // (background and all) stamped on the avatar would render a visible
-  // rectangle, not a garment. `accessory` also stays closet-only (no body
-  // region — see `REGION_BY_CATEGORY`).
+  // rectangle, not a garment. The AI transparent texture wins over the
+  // on-device cutout. `accessory` also stays closet-only (no body region —
+  // see `REGION_BY_CATEGORY`).
   const wearableItems = useMemo(
-    () => wardrobeItems.filter((item) => item.texture_url && item.category !== 'accessory'),
+    () =>
+      wardrobeItems.filter(
+        (item) =>
+          (item.ai_texture_url ?? item.texture_url) && item.category !== 'accessory'
+      ),
     [wardrobeItems]
   );
 
   const equippedGarments = useMemo(
     () =>
       Object.values(equippedByRegion)
-        .filter((item): item is WardrobeItemRead & { texture_url: string } => Boolean(item.texture_url))
-        .map((item) => ({ id: item.id, category: item.category, textureUrl: item.texture_url })),
+        .filter(
+          (item): item is WardrobeItemRead & { textureUrl: string } =>
+            Boolean(item.ai_texture_url ?? item.texture_url)
+        )
+        .map((item) => ({
+          id: item.id,
+          category: item.category,
+          textureUrl: (item.ai_texture_url ?? item.texture_url) as string,
+        })),
     [equippedByRegion]
   );
 
