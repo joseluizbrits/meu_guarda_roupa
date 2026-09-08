@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 
@@ -6,8 +6,25 @@ import { Text, View } from '@/components/Themed';
 import { ErrorText } from '@/src/components/atoms/ErrorText';
 import { AvatarResponse, getAvatar } from '@/src/core/api/avatar';
 import { getMeasurements, MeasurementsResponse } from '@/src/core/api/measurements';
-import { listWardrobeItems, WardrobeItemRead } from '@/src/core/api/wardrobe';
+import { listWardrobeItems, WardrobeCategory, WardrobeItemRead } from '@/src/core/api/wardrobe';
 import { Avatar3DView } from '@/src/features/avatar/Avatar3DView';
+
+/**
+ * Body region per garment category — the rule that makes multiple garments
+ * coexist on the avatar. One slot per region:
+ *   - upper: top / outerwear (both cover the torso)
+ *   - lower: bottom
+ *   - dress: full-body (competes with upper + lower)
+ *   - feet:  shoes
+ *   - accessory: no body region — closet-only.
+ */
+const REGION_BY_CATEGORY: Partial<Record<WardrobeCategory, string>> = {
+  top: 'upper',
+  outerwear: 'upper',
+  bottom: 'lower',
+  dress: 'dress',
+  shoes: 'feet',
+};
 
 /**
  * "Fitting Room" tab — the user's 3D avatar, built from their stored
@@ -21,7 +38,8 @@ export default function FittingRoomScreen() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [wardrobeItems, setWardrobeItems] = useState<WardrobeItemRead[]>([]);
-  const [equippedItem, setEquippedItem] = useState<WardrobeItemRead | null>(null);
+  // One garment per body region, so top + bottom + shoes can be worn at once.
+  const [equippedByRegion, setEquippedByRegion] = useState<Record<string, WardrobeItemRead>>({});
 
   // Refetches on every focus (rather than a store), same reasoning as
   // `closet.tsx` — reflects items added/edited in the closet tab without
@@ -76,6 +94,58 @@ export default function FittingRoomScreen() {
     };
   }, []);
 
+  // Only items with a real segmented cutout can be worn — a raw photo
+  // (background and all) stamped on the avatar would render a visible
+  // rectangle, not a garment. `accessory` also stays closet-only (no body
+  // region — see `REGION_BY_CATEGORY`).
+  const wearableItems = useMemo(
+    () => wardrobeItems.filter((item) => item.texture_url && item.category !== 'accessory'),
+    [wardrobeItems]
+  );
+
+  const equippedGarments = useMemo(
+    () =>
+      Object.values(equippedByRegion)
+        .filter((item): item is WardrobeItemRead & { texture_url: string } => Boolean(item.texture_url))
+        .map((item) => ({ id: item.id, category: item.category, textureUrl: item.texture_url })),
+    [equippedByRegion]
+  );
+
+  const isEquipped = useCallback(
+    (item: WardrobeItemRead) => equippedByRegion[REGION_BY_CATEGORY[item.category] ?? '']?.id === item.id,
+    [equippedByRegion]
+  );
+
+  function toggleItem(item: WardrobeItemRead) {
+    const region = REGION_BY_CATEGORY[item.category];
+    if (!region) {
+      return;
+    }
+    setEquippedByRegion((prev) => {
+      // Tapping the currently-worn garment takes it off.
+      if (prev[region]?.id === item.id) {
+        const next = { ...prev };
+        delete next[region];
+        return next;
+      }
+      // Wearing an item that covers the whole body (dress) drops the torso
+      // and leg slots so they don't fight over the same surface.
+      const next = { ...prev, [region]: item };
+      if (item.category === 'dress') {
+        delete next.upper;
+        delete next.lower;
+      } else if (REGION_BY_CATEGORY[item.category] === 'upper' || REGION_BY_CATEGORY[item.category] === 'lower') {
+        // Putting on a top/bottom when a dress is worn removes the dress.
+        delete next.dress;
+      }
+      return next;
+    });
+  }
+
+  function takeAllOff() {
+    setEquippedByRegion({});
+  }
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -92,11 +162,7 @@ export default function FittingRoomScreen() {
     );
   }
 
-  // Only items with a real segmented cutout can be worn — a raw photo
-  // (background and all) stamped on the avatar as a decal would render a
-  // visible rectangle, not a garment. `accessory` also stays closet-only
-  // (see `garmentPlacement.ts` — no single generalizable body region).
-  const wearableItems = wardrobeItems.filter((item) => item.texture_url && item.category !== 'accessory');
+  const equippedCount = Object.keys(equippedByRegion).length;
 
   return (
     <View style={styles.container}>
@@ -104,7 +170,6 @@ export default function FittingRoomScreen() {
       <Text style={styles.hint}>Drag to rotate</Text>
       <View style={styles.viewport}>
         <Avatar3DView
-          key={equippedItem?.id ?? 'none'}
           measurements={{
             height_cm: measurements.height_cm,
             chest_cm: measurements.chest_cm,
@@ -114,31 +179,27 @@ export default function FittingRoomScreen() {
             inseam_cm: measurements.inseam_cm,
           }}
           faceTextureUrl={avatar.face_texture_url}
-          equippedGarment={
-            equippedItem && equippedItem.texture_url
-              ? { category: equippedItem.category, textureUrl: equippedItem.texture_url }
-              : null
-          }
+          equippedGarments={equippedGarments}
         />
       </View>
 
       {wearableItems.length > 0 ? (
         <View style={styles.picker}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickerContent}>
-            {equippedItem ? (
+            {equippedCount > 0 ? (
               <Pressable
                 style={[styles.pickerItem, styles.takeOff]}
-                onPress={() => setEquippedItem(null)}
+                onPress={takeAllOff}
                 accessibilityRole="button"
-                accessibilityLabel="Take off">
+                accessibilityLabel="Take off all">
                 <Text style={styles.takeOffText}>Take off</Text>
               </Pressable>
             ) : null}
             {wearableItems.map((item) => (
               <Pressable
                 key={item.id}
-                style={[styles.pickerItem, equippedItem?.id === item.id && styles.pickerItemActive]}
-                onPress={() => setEquippedItem(item)}
+                style={[styles.pickerItem, isEquipped(item) && styles.pickerItemActive]}
+                onPress={() => toggleItem(item)}
                 accessibilityRole="button"
                 accessibilityLabel={`Try on ${item.category}`}>
                 <Image
