@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import { useFocusEffect } from 'expo-router';
 
 import { Text, View } from '@/components/Themed';
@@ -8,6 +9,7 @@ import { AvatarResponse, getAvatar } from '@/src/core/api/avatar';
 import { getMeasurements, MeasurementsResponse } from '@/src/core/api/measurements';
 import { listWardrobeItems, WardrobeCategory, WardrobeItemRead } from '@/src/core/api/wardrobe';
 import { Avatar3DView } from '@/src/features/avatar/Avatar3DView';
+import { warmTextureCache } from '@/src/features/avatar/avatarTextures';
 
 /**
  * Body region per garment category — the rule that makes multiple garments
@@ -51,6 +53,11 @@ export default function FittingRoomScreen() {
         .then((result) => {
           if (!cancelled) {
             setWardrobeItems(result);
+            // Pre-warm the 3D texture cache with every wearable cutout so
+            // trying an item on is instant (no fetch when the shell is
+            // attached later on). expo-image disk caches the picker
+            // thumbnails separately.
+            warmTextureCache(result.filter((item) => item.texture_url).map((item) => item.texture_url!));
           }
         })
         .catch(() => {
@@ -205,7 +212,9 @@ export default function FittingRoomScreen() {
                 <Image
                   source={{ uri: item.ai_photo_url ?? item.texture_url! }}
                   style={styles.pickerThumbnail}
-                  resizeMode="contain"
+                  contentFit="contain"
+                  cachePolicy="disk"
+                  transition={150}
                 />
               </Pressable>
             ))}

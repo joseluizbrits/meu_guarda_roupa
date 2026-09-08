@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { GLView, type ExpoWebGLRenderingContext } from 'expo-gl';
 import { Renderer } from 'expo-three';
 import { Asset } from 'expo-asset';
@@ -8,6 +8,7 @@ import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 import type { WardrobeCategory } from '@/src/core/api/wardrobe';
+import { loadTextureCached } from './avatarTextures';
 import { bindPosePosition, findSkinnedMesh } from './bindPose';
 import { createDecal } from './decal';
 import { readUriBytes } from './faceTexture/readUriBytes';
@@ -67,52 +68,14 @@ type Avatar3DViewProps = {
   equippedGarments?: EquippedGarment[];
 };
 
-/**
- * Loads a remote image URL into a `THREE.Texture`. Used for both the face
- * texture and garment textures — neither is treated specially here.
- */
-async function loadTexture(url: string): Promise<THREE.Texture> {
-  if (Platform.OS === 'web') {
-    return new THREE.TextureLoader().loadAsync(url);
-  }
-  const { TextureLoader } = await import('expo-three');
-  return new Promise((resolve, reject) => {
-    new TextureLoader().load(url, resolve, undefined, reject);
-  });
-}
-
-/**
- * Loads a texture, falling back to `null` on any failure so a dead URL
- * doesn't block rendering the rest of the avatar.
- */
-async function loadTextureSafe(url: string): Promise<THREE.Texture | null> {
-  try {
-    return await loadTexture(url);
-  } catch {
-    return null;
-  }
-}
-
 // ---------------------------------------------------------------------------
-// Module-level caches shared across Avatar3DView instances (and around the
+// Module-level GLB cache shared across Avatar3DView instances (and around the
 // whole screen lifetime, not just one mount). Loading the GLB is the single
-// most expensive step (a ~1.9 MB parse); textures are fetched once per URL.
-// The old code re-did both on every garment change because the screen keyed
-// the whole view on the equipped item — this cache is what makes in-place
-// garment swaps feel instant.
+// most expensive step (a ~1.9 MB parse). Textures live in `avatarTextures.ts`
+// (same session-scoped promise cache) so Fitting Room can pre-warm them.
 // ---------------------------------------------------------------------------
 
 let gltfCache: Promise<GLTF> | null = null;
-const textureCache = new Map<string, Promise<THREE.Texture | null>>();
-
-function loadTextureCached(url: string): Promise<THREE.Texture | null> {
-  let pending = textureCache.get(url);
-  if (!pending) {
-    pending = loadTextureSafe(url);
-    textureCache.set(url, pending);
-  }
-  return pending;
-}
 
 /**
  * Loads the rigged humanoid GLB bundled with the app
@@ -177,6 +140,11 @@ export function Avatar3DView({ faceTextureUrl, equippedGarments = [] }: Avatar3D
   const rendererRef = useRef<Renderer | null>(null);
   const glRef = useRef<ExpoWebGLRenderingContext | null>(null);
   const skinnedMeshRef = useRef<THREE.SkinnedMesh | null>(null);
+  // Shells must be parented under the avatar group (gltf.scene), NOT the root
+  // scene: the avatar group carries the vertical centering offset applied
+  // after the GLB's own bounding box is measured. Root-scene children would
+  // sit in raw bind-pose space and render floating outside the character.
+  const garmentParentRef = useRef<THREE.Object3D | null>(null);
   const garmentNamesRef = useRef<string[]>([]);
   const [contextReady, setContextReady] = useState(false);
 
@@ -251,6 +219,9 @@ export function Avatar3DView({ faceTextureUrl, equippedGarments = [] }: Avatar3D
       relaxArmsToSides(gltf.scene);
       const skinnedMesh = findSkinnedMesh(gltf.scene);
       skinnedMeshRef.current = skinnedMesh;
+      // All garment shells attach under the avatar group (see the comment on
+      // `garmentParentRef`) so they inherit its centering transform.
+      garmentParentRef.current = gltf.scene;
       if (skinnedMesh && faceTexture) {
         attachFaceDecal(gltf.scene, skinnedMesh, faceTexture);
       }
@@ -287,19 +258,19 @@ export function Avatar3DView({ faceTextureUrl, equippedGarments = [] }: Avatar3D
     }
     let cancelled = false;
     (async () => {
-      const scene = sceneRef.current;
       const mesh = skinnedMeshRef.current;
-      if (!scene || !mesh) {
+      const parent = garmentParentRef.current;
+      if (!parent || !mesh) {
         return;
       }
 
       // Remove shells from the previous reconciliation (matched by name).
       if (garmentNamesRef.current.length > 0) {
         const previousNames = new Set(garmentNamesRef.current);
-        // Rebuild the filter list each pass because `scene.children` is
+        // Rebuild the filter list each pass because `parent.children` is
         // live; collecting first avoids mutating during iteration.
-        const toRemove = scene.children.filter((child) => previousNames.has(child.name));
-        toRemove.forEach((child) => scene.remove(child));
+        const toRemove = parent.children.filter((child) => previousNames.has(child.name));
+        toRemove.forEach((child) => parent.remove(child));
         garmentNamesRef.current = [];
       }
 
@@ -315,7 +286,7 @@ export function Avatar3DView({ faceTextureUrl, equippedGarments = [] }: Avatar3D
         if (!texture) {
           return;
         }
-        const shells = attachGarmentShell(scene, mesh, garment.category, texture);
+        const shells = attachGarmentShell(parent, mesh, garment.category, texture);
         shells.forEach((shell) => added.push(shell.name));
       });
       garmentNamesRef.current = added;
