@@ -217,6 +217,29 @@ export default function SelectPiecesScreen() {
     }
   }, [photoAssetId, setDetections]);
 
+  // Retry for the one-shot auto-detect: if it failed before an asset was
+  // ever uploaded (photoAssetId still null), this re-uploads the raw photo
+  // and runs detection again from scratch.
+  const handleAutoDetectRetry = useCallback(async () => {
+    if (!photoUri || !contentType) {
+      return;
+    }
+    setError(null);
+    setBusy(true);
+    try {
+      const bytes = await readUriBytes(photoUri);
+      const { asset_id, upload_url } = await requestUploadUrl('garment_photo', contentType);
+      await uploadToPresignedUrl(upload_url, bytes, contentType);
+      const data = await detectGarments(asset_id);
+      autoDetectAttempted.current = false;
+      setDetections(data.pieces, asset_id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Detecção falhou. Tente novamente.');
+    } finally {
+      setBusy(false);
+    }
+  }, [photoUri, contentType, setDetections]);
+
   const handleConfirm = useCallback(async () => {
     if (!photoUri || !photoW || !photoH) {
       return;
@@ -294,6 +317,13 @@ export default function SelectPiecesScreen() {
         <Stack.Screen options={{ title: 'Escolher peças' }} />
         <View style={styles.center}>
           <ActivityIndicator size="large" />
+          <Text style={styles.loadingText}>
+            {error ? 'Detecção falhou. Tente novamente.' : 'Detectando peças na foto…'}
+          </Text>
+          {error ? <ErrorText style={styles.error}>{error}</ErrorText> : null}
+          {error ? (
+            <Button title="Tentar novamente" onPress={handleAutoDetectRetry} loading={busy} disabled={busy} />
+          ) : null}
         </View>
       </>
     );
@@ -371,6 +401,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    opacity: 0.7,
+    textAlign: 'center',
   },
   emptyTitle: {
     fontSize: 18,
