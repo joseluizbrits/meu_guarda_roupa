@@ -47,6 +47,28 @@ class WardrobeItemVirtualize(BaseModel):
     mask_asset_id: uuid.UUID | None = None
 
 
+class NormalizedBox(BaseModel):
+    x_min: float
+    y_min: float
+    x_max: float
+    y_max: float
+
+
+class GarmentPiece(BaseModel):
+    label: str
+    category: str
+    box: NormalizedBox
+    confidence: float
+
+
+class DetectionResult(BaseModel):
+    pieces: list[GarmentPiece]
+
+
+class WardrobeItemDetectRequest(BaseModel):
+    photo_asset_id: uuid.UUID
+
+
 class WardrobeItemRead(BaseModel):
     id: uuid.UUID
     category: str

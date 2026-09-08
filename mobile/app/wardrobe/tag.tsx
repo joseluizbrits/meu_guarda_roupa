@@ -7,7 +7,12 @@ import { Button } from '@/src/components/atoms/Button';
 import { ErrorText } from '@/src/components/atoms/ErrorText';
 import { CategoryPicker } from '@/src/components/molecules/CategoryPicker';
 import { requestUploadUrl, uploadToPresignedUrl } from '@/src/core/api/assets';
-import { createWardrobeItem, setWardrobeItemTexture, WardrobeCategory } from '@/src/core/api/wardrobe';
+import {
+  createWardrobeItem,
+  detectGarments,
+  setWardrobeItemTexture,
+  WardrobeCategory,
+} from '@/src/core/api/wardrobe';
 import { readUriBytes } from '@/src/features/avatar/faceTexture/readUriBytes';
 import { classifyGarmentPhoto, type GarmentClassification } from '@/src/features/wardrobe/classification/garmentClassifier';
 import { useCapturedGarmentPhotoStore } from '@/src/features/wardrobe/capturedGarmentPhotoStore';
@@ -43,6 +48,7 @@ export default function TagGarmentScreen() {
   const [segmenting, setSegmenting] = useState(false);
   const [cutoutUri, setCutoutUri] = useState<string | null>(null);
   const [classification, setClassification] = useState<GarmentClassification | null>(null);
+  const [detecting, setDetecting] = useState(false);
   // Same trick as `app/onboarding/review.tsx`: `clearPhoto()` on success
   // flips `photoUri` to null right before navigating away, which would
   // otherwise race the "no photo, go capture one" redirect below.
@@ -163,6 +169,26 @@ export default function TagGarmentScreen() {
     }
   }
 
+  async function handleDetectMultiple() {
+    if (!photoUri || !contentType) {
+      return;
+    }
+    setError(null);
+    setDetecting(true);
+    try {
+      const bytes = await readUriBytes(photoUri);
+      const { asset_id, upload_url } = await requestUploadUrl('garment_photo', contentType);
+      await uploadToPresignedUrl(upload_url, bytes, contentType);
+      const data = await detectGarments(asset_id);
+      useCapturedGarmentPhotoStore.getState().setDetections(data.pieces, asset_id);
+      router.push('/wardrobe/select-pieces');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+    } finally {
+      setDetecting(false);
+    }
+  }
+
   function handleRetake() {
     clearPhoto();
     router.replace('/wardrobe/capture');
@@ -196,13 +222,22 @@ export default function TagGarmentScreen() {
         {error ? <ErrorText style={styles.error}>{error}</ErrorText> : null}
 
         <Button
-          title={saving ? 'Saving...' : 'Add to wardrobe'}
+          title={saving ? 'Salvando...' : 'Adicionar ao closet'}
           onPress={handleConfirm}
           loading={saving}
           disabled={!category || saving}
         />
+        <View style={styles.detectMultiple}>
+          <Button
+            title={detecting ? 'Detectando...' : 'Detectar várias peças'}
+            onPress={handleDetectMultiple}
+            loading={detecting}
+            disabled={saving || detecting}
+            style={styles.secondaryButton}
+          />
+        </View>
         <View style={styles.retake}>
-          <Button title="Retake photo" onPress={handleRetake} disabled={saving} />
+          <Button title="Refazer foto" onPress={handleRetake} disabled={saving || detecting} />
         </View>
       </View>
     </>
@@ -259,5 +294,14 @@ const styles = StyleSheet.create({
   retake: {
     marginTop: 12,
     width: '100%',
+  },
+  detectMultiple: {
+    marginTop: 12,
+    width: '100%',
+  },
+  secondaryButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: '#000',
   },
 });

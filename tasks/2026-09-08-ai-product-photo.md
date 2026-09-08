@@ -1,6 +1,6 @@
 # Virtualização de peça: foto de produto via IA + extração com recorte manual
 
-- **Status:** Validated
+- **Status:** Done
 - **Branch:** task/ai-product-photo-extraction
 - **Goal:** Usuário manda foto de peça (avulsa) OU de pessoa vestindo; app gera a "foto de produto" limpa da peça (fundo neutro, sem pessoa) via IA e mostra no closet.
 - **Context / descoberta:** O backend JÁ TEM o pipeline completo, só adormecido pela key vazia:
