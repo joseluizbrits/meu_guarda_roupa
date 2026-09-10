@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 
+import Colors from '@/constants/Colors';
+import { spacing, typography } from '@/constants/Theme';
+import { useColorScheme } from '@/components/useColorScheme';
 import { Text, View } from '@/components/Themed';
 import { Button } from '@/src/components/atoms/Button';
 import { ErrorText } from '@/src/components/atoms/ErrorText';
@@ -21,11 +24,6 @@ const FIELDS: { key: FieldKey; label: string }[] = [
 
 type FormValues = Record<FieldKey, string>;
 
-// Pre-filled with reasonable adult-average defaults — the 3D avatar (a
-// rigged model, see Avatar3DView) doesn't apply these to body scaling yet,
-// the current focus is showing how garments combine, so defaults let
-// testers skip past this step instead of typing 6 numbers. Still
-// editable/required like before.
 const DEFAULT_VALUES: FormValues = {
   height_cm: '170',
   chest_cm: '90',
@@ -39,23 +37,18 @@ function parseMeasurements(values: FormValues): Measurements | null {
   const parsed = {} as Measurements;
   for (const { key } of FIELDS) {
     const value = Number(values[key].replace(',', '.'));
-    if (!values[key] || !Number.isFinite(value) || value <= 0) {
-      return null;
-    }
+    if (!values[key] || !Number.isFinite(value) || value <= 0) return null;
     parsed[key] = value;
   }
   return parsed;
 }
 
-/**
- * Onboarding step 1 — collects the 6 body measurements (cm) and upserts them
- * via `PUT /users/me/measurements`. Safe to submit repeatedly (backend
- * upserts), so a user revisiting this step just overwrites their values.
- */
 export function MeasurementsForm() {
   const [values, setValues] = useState<FormValues>(DEFAULT_VALUES);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const colorScheme = useColorScheme();
+  const colors = Colors[colorScheme];
 
   const measurements = parseMeasurements(values);
 
@@ -64,9 +57,7 @@ export function MeasurementsForm() {
   }
 
   async function handleSubmit() {
-    if (!measurements) {
-      return;
-    }
+    if (!measurements) return;
     setError(null);
     setSubmitting(true);
     try {
@@ -81,8 +72,8 @@ export function MeasurementsForm() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Your measurements</Text>
-      <Text style={styles.subtitle}>
+      <Text style={[styles.title, { color: colors.primary }]}>Your measurements</Text>
+      <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
         Used to size your avatar and recommend fits. All values in centimeters.
       </Text>
 
@@ -111,21 +102,19 @@ export function MeasurementsForm() {
 
 const styles = StyleSheet.create({
   container: {
-    padding: 24,
+    padding: spacing['2xl'],
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 8,
+    ...typography.h1,
+    marginBottom: spacing.sm,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 14,
-    opacity: 0.7,
-    marginBottom: 24,
+    ...typography.body,
+    marginBottom: spacing['2xl'],
     textAlign: 'center',
   },
   error: {
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
 });

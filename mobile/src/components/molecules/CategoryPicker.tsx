@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet } from 'react-native';
 
 import Colors from '@/constants/Colors';
+import { radius, shadow, spacing, typography } from '@/constants/Theme';
 import { Text, View } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
 import { WardrobeCategory } from '@/src/core/api/wardrobe';
@@ -29,7 +30,7 @@ type CategoryPickerProps = {
 /** A row of selectable chips for the 6 wardrobe-item categories. Dumb — the caller owns the selected value. */
 export function CategoryPicker({ value, onChange, disabled, allowAll }: CategoryPickerProps) {
   const colorScheme = useColorScheme();
-  const tint = Colors[colorScheme].tint;
+  const colors = Colors[colorScheme];
   const options = allowAll ? [{ value: null, label: 'All' }, ...CATEGORIES] : CATEGORIES;
 
   return (
@@ -45,13 +46,21 @@ export function CategoryPicker({ value, onChange, disabled, allowAll }: Category
             onPress={() => onChange(category.value)}
             style={({ pressed }) => [
               styles.chip,
-              {
-                borderColor: tint,
-                backgroundColor: selected ? tint : 'transparent',
-                opacity: disabled ? 0.5 : pressed ? 0.8 : 1,
-              },
+              selected
+                ? [styles.chipSelected, { backgroundColor: colors.primary }]
+                : [styles.chipDefault, { borderColor: colors.border, backgroundColor: colors.surface }],
+              pressed && styles.chipPressed,
+              disabled && styles.chipDisabled,
             ]}>
-            <Text style={[styles.label, { color: selected ? '#fff' : tint }]}>{category.label}</Text>
+            <Text
+              style={[
+                styles.label,
+                selected
+                  ? { color: '#FFFFFF' }
+                  : { color: colors.textSecondary },
+              ]}>
+              {category.label}
+            </Text>
           </Pressable>
         );
       })}
@@ -63,16 +72,29 @@ const styles = StyleSheet.create({
   wrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: spacing.sm,
   },
   chip: {
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  chipDefault: {
     borderWidth: 1.5,
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+  },
+  chipSelected: {
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+    ...shadow.sm,
+  },
+  chipPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.96 }],
+  },
+  chipDisabled: {
+    opacity: 0.5,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '600',
+    ...typography.label,
   },
 });

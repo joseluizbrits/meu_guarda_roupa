@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
 import { Link, Stack } from 'expo-router';
 
+import Colors from '@/constants/Colors';
+import { spacing, typography } from '@/constants/Theme';
+import { useColorScheme } from '@/components/useColorScheme';
 import { Text, View } from '@/components/Themed';
 import { Button } from '@/src/components/atoms/Button';
 import { ErrorText } from '@/src/components/atoms/ErrorText';
@@ -10,6 +13,8 @@ import { useAuthStore } from '@/src/core/auth/authStore';
 
 export default function RegisterScreen() {
   const register = useAuthStore((state) => state.register);
+  const colorScheme = useColorScheme();
+  const colors = Colors[colorScheme];
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -22,9 +27,6 @@ export default function RegisterScreen() {
     setSubmitting(true);
     try {
       await register(email.trim(), password, fullName.trim());
-      // No manual navigation here — the root layout's Stack.Protected
-      // guards react to `isAuthenticated` and redirect to `(tabs)` or
-      // `/onboarding` once it also knows whether onboarding is complete.
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
     } finally {
@@ -39,7 +41,10 @@ export default function RegisterScreen() {
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.container}>
-          <Text style={styles.title}>Create your account</Text>
+          <Text style={[styles.title, { color: colors.primary }]}>Create your account</Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            Start building your virtual wardrobe
+          </Text>
 
           <FormField
             label="Full name"
@@ -82,7 +87,9 @@ export default function RegisterScreen() {
           />
 
           <Link href="/login" style={styles.link}>
-            <Text style={styles.linkText}>Already have an account? Sign in</Text>
+            <Text style={[styles.linkText, { color: colors.primary }]}>
+              Already have an account? Sign in
+            </Text>
           </Link>
         </View>
       </KeyboardAvoidingView>
@@ -97,23 +104,28 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'center',
-    padding: 24,
+    padding: spacing['2xl'],
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 24,
+    ...typography.h1,
+    marginBottom: spacing.sm,
+    textAlign: 'center',
+  },
+  subtitle: {
+    ...typography.body,
+    marginBottom: spacing['3xl'],
     textAlign: 'center',
   },
   error: {
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   link: {
-    marginTop: 20,
+    marginTop: spacing.xl,
     alignItems: 'center',
   },
   linkText: {
+    ...typography.body,
     textAlign: 'center',
-    color: '#2e78b7',
+    fontWeight: '600',
   },
 });

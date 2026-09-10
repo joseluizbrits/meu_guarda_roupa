@@ -8,6 +8,9 @@ import { Text, View } from '@/components/Themed';
 import { Button } from '@/src/components/atoms/Button';
 import { ErrorText } from '@/src/components/atoms/ErrorText';
 import { CategoryPicker } from '@/src/components/molecules/CategoryPicker';
+import { spacing, radius, shadow, typography } from '@/constants/Theme';
+import Colors from '@/constants/Colors';
+import { useColorScheme } from '@/components/useColorScheme';
 import { requestUploadUrl, uploadToPresignedUrl } from '@/src/core/api/assets';
 import { createWardrobeItem, detectGarments, WardrobeCategory } from '@/src/core/api/wardrobe';
 import { readUriBytes } from '@/src/features/avatar/faceTexture/readUriBytes';
@@ -96,6 +99,8 @@ type PieceCardProps = {
 
 function PieceCard({ piece, index, kept, category, photoUri, photoW, photoH, onToggle, onCategory }: PieceCardProps) {
   const [thumb, setThumb] = useState<string | null>(null);
+  const colorScheme = useColorScheme();
+  const colors = Colors[colorScheme];
 
   useEffect(() => {
     let cancelled = false;
@@ -128,7 +133,7 @@ function PieceCard({ piece, index, kept, category, photoUri, photoW, photoH, onT
       accessibilityRole="checkbox"
       accessibilityState={{ checked: kept }}
       onPress={() => onToggle(index)}
-      style={[styles.card, kept ? styles.cardKept : styles.cardDropped]}
+      style={[styles.card, { borderColor: kept ? colors.success : colors.border }, !kept && { opacity: 0.6 }]}
     >
       <View style={styles.thumb}>
         {thumb ? <Image source={{ uri: thumb }} style={styles.thumbImage} resizeMode="cover" /> : <ActivityIndicator />}
@@ -368,7 +373,7 @@ export default function SelectPiecesScreen() {
           <Text style={styles.emptySubtitle}>Tente outra foto com a peça mais visível.</Text>
           {error ? <ErrorText style={styles.error}>{error}</ErrorText> : null}
           <View style={styles.emptyActions}>
-            <Button title="Voltar" onPress={() => router.back()} disabled={busy} style={styles.secondaryButton} />
+            <Button title="Voltar" variant="secondary" onPress={() => router.back()} disabled={busy} />
             <Button title="Tentar novamente" onPress={handleRetry} loading={busy} disabled={busy} />
           </View>
           <View style={styles.emptyActions}>
@@ -408,7 +413,7 @@ export default function SelectPiecesScreen() {
         />
 
         <View style={styles.actions}>
-          <Button title="Voltar" onPress={() => router.back()} disabled={busy} style={styles.secondaryButton} />
+          <Button title="Voltar" variant="secondary" onPress={() => router.back()} disabled={busy} />
           <Button
             title={`Adicionar ${keptCount} ${keptCount === 1 ? 'peça' : 'peças'} ao closet`}
             onPress={handleConfirm}
@@ -424,66 +429,54 @@ export default function SelectPiecesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 24,
+    padding: spacing['2xl'],
   },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
+    padding: spacing['2xl'],
   },
   loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    opacity: 0.7,
+    marginTop: spacing.md,
+    ...typography.body,
     textAlign: 'center',
   },
   emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
+    ...typography.h3,
+    marginBottom: spacing.sm,
   },
   emptySubtitle: {
-    fontSize: 14,
-    opacity: 0.7,
+    ...typography.body,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: spacing['2xl'],
   },
   emptyActions: {
     flexDirection: 'row',
-    gap: 12,
+    gap: spacing.md,
     width: '100%',
   },
   listContent: {
-    paddingBottom: 16,
+    paddingBottom: spacing.lg,
   },
   row: {
-    gap: 12,
-    marginBottom: 12,
+    gap: spacing.md,
+    marginBottom: spacing.md,
   },
   card: {
     flex: 1,
-    borderRadius: 12,
-    padding: 8,
+    borderRadius: radius.lg,
+    padding: spacing.sm,
     borderWidth: 2,
-    borderColor: 'rgba(0,0,0,0.08)',
-  },
-  cardKept: {
-    borderColor: '#34c759',
-  },
-  cardDropped: {
-    borderColor: 'rgba(0,0,0,0.08)',
-    opacity: 0.6,
   },
   thumb: {
     width: '100%',
     aspectRatio: 1,
-    borderRadius: 8,
+    borderRadius: radius.md,
     overflow: 'hidden',
-    backgroundColor: 'rgba(0,0,0,0.05)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
     position: 'relative',
   },
   thumbImage: {
@@ -498,34 +491,26 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
   },
   cardLabel: {
     flex: 1,
     color: '#fff',
-    fontSize: 12,
+    ...typography.caption,
     fontWeight: '600',
   },
   progress: {
     textAlign: 'center',
-    marginBottom: 12,
-    fontSize: 14,
-    opacity: 0.8,
+    marginBottom: spacing.md,
+    ...typography.body,
   },
   error: {
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   actions: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
-  },
-  secondaryButton: {
-    flex: 1,
-    backgroundColor: '#fff',
-    borderWidth: 1.5,
-    borderColor: 'rgba(0,0,0,0.15)',
+    gap: spacing.md,
+    marginTop: spacing.sm,
   },
 });

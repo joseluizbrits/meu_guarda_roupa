@@ -3,6 +3,9 @@ import { ActivityIndicator, Image, StyleSheet } from 'react-native';
 import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { File, Paths } from 'expo-file-system';
 
+import Colors from '@/constants/Colors';
+import { spacing, radius, shadow, typography } from '@/constants/Theme';
+import { useColorScheme } from '@/components/useColorScheme';
 import { Text, View } from '@/components/Themed';
 import { Button } from '@/src/components/atoms/Button';
 import { ErrorText } from '@/src/components/atoms/ErrorText';
@@ -20,18 +23,10 @@ import { readUriBytes } from '@/src/features/avatar/faceTexture/readUriBytes';
 import { extractGarmentCutout } from '@/src/features/wardrobe/segmentation/extractGarmentCutout';
 import { tfliteSegmentationEngine } from '@/src/features/wardrobe/segmentation/tfliteSegmentationEngine';
 
-/**
- * Garment detail — a larger view of the photo plus re-tag (category picker,
- * saved immediately on change), reprocess (re-run on-device background
- * removal against the original raw photo — kept in storage forever
- * precisely so this is always possible, see `photo_asset_id`'s own storage
- * key convention — and replace the current cutout with the result), and
- * delete (behind a simple inline confirm — `Alert.alert` is a no-op on
- * react-native-web, so a native `Alert` here wouldn't actually confirm
- * anything when running on web).
- */
 export default function WardrobeItemScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const colorScheme = useColorScheme();
+  const colors = Colors[colorScheme];
 
   const [item, setItem] = useState<WardrobeItemRead | null>(null);
   const [loading, setLoading] = useState(true);
@@ -46,47 +41,27 @@ export default function WardrobeItemScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (!id) {
-        return;
-      }
+      if (!id) return;
       let cancelled = false;
       setLoading(true);
       setLoadError(null);
       getWardrobeItem(id)
-        .then((result) => {
-          if (!cancelled) {
-            setItem(result);
-          }
-        })
+        .then((result) => { if (!cancelled) setItem(result); })
         .catch((err) => {
-          if (cancelled) {
-            return;
-          }
+          if (cancelled) return;
           if (err instanceof ApiError && err.status === 404) {
             setLoadError('This item no longer exists.');
           } else {
             setLoadError(err instanceof Error ? err.message : 'Could not load this item.');
           }
         })
-        .finally(() => {
-          if (!cancelled) {
-            setLoading(false);
-          }
-        });
-      return () => {
-        cancelled = true;
-      };
+        .finally(() => { if (!cancelled) setLoading(false); });
+      return () => { cancelled = true; };
     }, [id])
   );
 
   async function handleRecategorize(category: WardrobeItemRead['category'] | null) {
-    // `category` is only ever `null` when `CategoryPicker`'s `allowAll` is
-    // set (it isn't here) — this screen always re-tags to one real
-    // category, never "no category", but the shared component's `onChange`
-    // type covers both callers.
-    if (!item || category === null || category === item.category) {
-      return;
-    }
+    if (!item || category === null || category === item.category) return;
     setSaveError(null);
     setSavingCategory(true);
     try {
@@ -99,19 +74,8 @@ export default function WardrobeItemScreen() {
     }
   }
 
-  /**
-   * Re-runs on-device background removal against the item's original raw
-   * photo (`photo_url` — the untouched capture, never overwritten by a
-   * previous segmentation attempt) and replaces the current cutout with
-   * the result. Skips the "is this even a garment?" classifier gate
-   * `tag.tsx` uses on first capture — pointless here: the item already has
-   * a real, user-picked category, so that heuristic has nothing useful to
-   * add and could only ever get in the way of an explicit retry.
-   */
   async function handleReprocess() {
-    if (!item) {
-      return;
-    }
+    if (!item) return;
     setReprocessError(null);
     setReprocessing(true);
     try {
@@ -135,9 +99,7 @@ export default function WardrobeItemScreen() {
   }
 
   async function handleDelete() {
-    if (!item) {
-      return;
-    }
+    if (!item) return;
     setDeleteError(null);
     setDeleting(true);
     try {
@@ -152,10 +114,10 @@ export default function WardrobeItemScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Garment' }} />
-      <View style={styles.container}>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
         {loading ? (
           <View style={styles.center}>
-            <ActivityIndicator size="large" />
+            <ActivityIndicator size="large" color={colors.primary} />
           </View>
         ) : loadError || !item ? (
           <View style={styles.center}>
@@ -165,7 +127,7 @@ export default function WardrobeItemScreen() {
           <>
             <Image
               source={{ uri: item.ai_photo_url ?? item.texture_url ?? item.photo_url }}
-              style={styles.photo}
+              style={[styles.photo, { backgroundColor: colors.surfaceMuted }]}
               resizeMode="contain"
             />
 
@@ -181,6 +143,7 @@ export default function WardrobeItemScreen() {
               />
               <Button
                 title={reprocessing ? 'Reprocessing...' : 'Reprocess background removal'}
+                variant="secondary"
                 onPress={handleReprocess}
                 loading={reprocessing}
                 disabled={reprocessing}
@@ -188,26 +151,25 @@ export default function WardrobeItemScreen() {
               {reprocessError ? <ErrorText style={styles.error}>{reprocessError}</ErrorText> : null}
             </View>
 
-            <Text style={styles.label}>Category</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Category</Text>
             <CategoryPicker value={item.category} onChange={handleRecategorize} disabled={savingCategory} />
             {saveError ? <ErrorText style={styles.error}>{saveError}</ErrorText> : null}
 
             <View style={styles.deleteSection}>
               {confirmingDelete ? (
                 <>
-                  <Text style={styles.confirmText}>Delete this item? This cannot be undone.</Text>
+                  <Text style={[styles.confirmText, { color: colors.textSecondary }]}>
+                    Delete this item? This cannot be undone.
+                  </Text>
                   {deleteError ? <ErrorText style={styles.error}>{deleteError}</ErrorText> : null}
                   <View style={styles.confirmActions}>
                     <View style={styles.confirmButton}>
-                      <Button
-                        title="Cancel"
-                        onPress={() => setConfirmingDelete(false)}
-                        disabled={deleting}
-                      />
+                      <Button title="Cancel" variant="secondary" onPress={() => setConfirmingDelete(false)} disabled={deleting} />
                     </View>
                     <View style={styles.confirmButton}>
                       <Button
                         title={deleting ? 'Deleting...' : 'Confirm delete'}
+                        variant="danger"
                         onPress={handleDelete}
                         loading={deleting}
                       />
@@ -215,7 +177,7 @@ export default function WardrobeItemScreen() {
                   </View>
                 </>
               ) : (
-                <Button title="Delete" onPress={() => setConfirmingDelete(true)} />
+                <Button title="Delete" variant="danger" onPress={() => setConfirmingDelete(true)} />
               )}
             </View>
           </>
@@ -228,7 +190,7 @@ export default function WardrobeItemScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 24,
+    padding: spacing['2xl'],
   },
   center: {
     flex: 1,
@@ -237,41 +199,35 @@ const styles = StyleSheet.create({
   },
   photo: {
     width: '100%',
-    // Unconstrained, `aspectRatio: 1` scales height to match width — fine
-    // on a phone-width screen, but on a wide desktop browser window the
-    // container has no other limit, so the image grows to fill most of
-    // the viewport. `maxWidth` caps that; `alignSelf: 'center'` keeps it
-    // centered once it's narrower than the container.
     maxWidth: 480,
     alignSelf: 'center',
     aspectRatio: 1,
-    borderRadius: 12,
-    marginBottom: 24,
-    backgroundColor: 'rgba(0,0,0,0.05)',
+    borderRadius: radius.lg,
+    marginBottom: spacing['2xl'],
   },
   reprocessSection: {
     width: '100%',
-    marginBottom: 20,
+    marginBottom: spacing.xl,
+    gap: spacing.sm,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 10,
+    ...typography.label,
+    marginBottom: spacing.md,
   },
   error: {
-    marginTop: 12,
+    marginTop: spacing.md,
   },
   deleteSection: {
-    marginTop: 32,
+    marginTop: spacing['3xl'],
   },
   confirmText: {
-    fontSize: 14,
-    marginBottom: 12,
+    ...typography.body,
+    marginBottom: spacing.md,
     textAlign: 'center',
   },
   confirmActions: {
     flexDirection: 'row',
-    gap: 12,
+    gap: spacing.md,
   },
   confirmButton: {
     flex: 1,

@@ -4,6 +4,7 @@ import { Image } from 'expo-image';
 import { router, useFocusEffect } from 'expo-router';
 
 import Colors from '@/constants/Colors';
+import { spacing, radius, shadow, typography } from '@/constants/Theme';
 import { useColorScheme } from '@/components/useColorScheme';
 import { Text, View } from '@/components/Themed';
 import { Button } from '@/src/components/atoms/Button';
@@ -11,21 +12,10 @@ import { ErrorText } from '@/src/components/atoms/ErrorText';
 import { CategoryPicker } from '@/src/components/molecules/CategoryPicker';
 import { deleteWardrobeItem, listWardrobeItems, WardrobeCategory, WardrobeItemRead } from '@/src/core/api/wardrobe';
 
-// Target cell width, not a fixed column count — a fixed count (e.g. always
-// 3 columns) looks fine on a phone but produces huge tiles on a wider
-// browser window (each column just stretches to fill the extra space).
-// Deriving the column count from the viewport keeps cells roughly this
-// size regardless of screen width.
 const IDEAL_CELL_WIDTH = 130;
 const MIN_COLUMNS = 2;
-const GRID_GAP = 8;
+const GRID_GAP = spacing.sm;
 
-/**
- * "Closet" tab — a grid of the user's photographed garments, filterable by
- * category. Refetches on every focus (rather than a store) so it always
- * reflects items added/edited/deleted by the capture and detail flows
- * without extra state-management machinery.
- */
 export default function ClosetScreen() {
   const [items, setItems] = useState<WardrobeItemRead[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +23,7 @@ export default function ClosetScreen() {
   const { width } = useWindowDimensions();
   const numColumns = Math.max(MIN_COLUMNS, Math.floor(width / IDEAL_CELL_WIDTH));
   const colorScheme = useColorScheme();
-  const tint = Colors[colorScheme].tint;
+  const colors = Colors[colorScheme];
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const selectionMode = selectedIds.size > 0;
@@ -47,36 +37,24 @@ export default function ClosetScreen() {
       setError(null);
       listWardrobeItems()
         .then((result) => {
-          if (!cancelled) {
-            setItems(result);
-          }
+          if (!cancelled) setItems(result);
         })
         .catch((err) => {
-          if (!cancelled) {
-            setError(err instanceof Error ? err.message : 'Could not load your wardrobe.');
-          }
+          if (!cancelled) setError(err instanceof Error ? err.message : 'Could not load your wardrobe.');
         });
-      return () => {
-        cancelled = true;
-      };
+      return () => { cancelled = true; };
     }, [])
   );
 
   const filteredItems = useMemo(() => {
-    if (!items) {
-      return items;
-    }
+    if (!items) return items;
     return filter ? items.filter((item) => item.category === filter) : items;
   }, [items, filter]);
 
   function toggleSelected(id: string) {
     setSelectedIds((current) => {
       const next = new Set(current);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   }
@@ -92,8 +70,6 @@ export default function ClosetScreen() {
     setDeleting(true);
     const ids = Array.from(selectedIds);
     const results = await Promise.allSettled(ids.map((id) => deleteWardrobeItem(id)));
-    // Only drop the ones that actually succeeded — a partial failure must
-    // not make a still-existing item disappear from the list.
     const succeededIds = new Set(ids.filter((_, i) => results[i].status === 'fulfilled'));
     if (succeededIds.size > 0) {
       setItems((current) => (current ? current.filter((item) => !succeededIds.has(item.id)) : current));
@@ -124,7 +100,7 @@ export default function ClosetScreen() {
   if (items === null) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
@@ -132,8 +108,10 @@ export default function ClosetScreen() {
   if (items.length === 0) {
     return (
       <View style={styles.center}>
-        <Text style={styles.emptyTitle}>Your closet is empty</Text>
-        <Text style={styles.emptySubtitle}>Photograph an item you own to add it here.</Text>
+        <Text style={[styles.emptyTitle, { color: colors.text }]}>Your closet is empty</Text>
+        <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+          Photograph an item you own to add it here.
+        </Text>
         <Button title="Add your first item" onPress={() => router.push('/wardrobe/capture')} />
       </View>
     );
@@ -143,20 +121,23 @@ export default function ClosetScreen() {
     <View style={styles.container}>
       {selectionMode ? (
         <View style={styles.selectionBar}>
-          <Text style={styles.selectionCount}>{selectedIds.size} selected</Text>
+          <Text style={[styles.selectionCount, { color: colors.text }]}>
+            {selectedIds.size} selected
+          </Text>
           {confirmingDelete ? (
             <View style={styles.selectionActions}>
-              <Button title="Cancel" onPress={() => setConfirmingDelete(false)} disabled={deleting} />
+              <Button title="Cancel" variant="secondary" onPress={() => setConfirmingDelete(false)} disabled={deleting} />
               <Button
                 title={deleting ? 'Deleting...' : 'Confirm delete'}
+                variant="danger"
                 onPress={handleDeleteSelected}
                 loading={deleting}
               />
             </View>
           ) : (
             <View style={styles.selectionActions}>
-              <Button title="Cancel" onPress={clearSelection} />
-              <Button title="Delete" onPress={() => setConfirmingDelete(true)} />
+              <Button title="Cancel" variant="secondary" onPress={clearSelection} />
+              <Button title="Delete" variant="danger" onPress={() => setConfirmingDelete(true)} />
             </View>
           )}
         </View>
@@ -169,7 +150,9 @@ export default function ClosetScreen() {
 
       {filteredItems && filteredItems.length === 0 ? (
         <View style={styles.center}>
-          <Text style={styles.emptySubtitle}>No items in this category.</Text>
+          <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+            No items in this category.
+          </Text>
         </View>
       ) : (
         <FlatList
@@ -188,18 +171,16 @@ export default function ClosetScreen() {
                 accessibilityRole="button"
                 accessibilityState={{ selected }}
                 accessibilityLabel={`${item.category} item`}>
-<Image
+                <Image
                   source={{ uri: item.ai_photo_url ?? item.texture_url ?? item.photo_url }}
-                  style={styles.thumbnail}
+                  style={[styles.thumbnail, { backgroundColor: colors.surfaceMuted }]}
                   contentFit="cover"
                   cachePolicy="disk"
                   transition={150}
                 />
                 {selected ? (
-                  <View style={[styles.checkBadge, { backgroundColor: tint }]} lightColor={tint} darkColor={tint}>
-                    <Text style={styles.checkBadgeText} lightColor="#fff" darkColor="#fff">
-                      ✓
-                    </Text>
+                  <View style={[styles.checkBadge, { backgroundColor: colors.primary }]}>
+                    <Text style={styles.checkBadgeText}>✓</Text>
                   </View>
                 ) : null}
               </Pressable>
@@ -219,52 +200,46 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
+    padding: spacing['2xl'],
   },
   emptyTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 8,
+    ...typography.h3,
+    marginBottom: spacing.sm,
     textAlign: 'center',
   },
   emptySubtitle: {
-    fontSize: 14,
-    opacity: 0.7,
-    marginBottom: 24,
+    ...typography.body,
+    marginBottom: spacing['2xl'],
     textAlign: 'center',
   },
   filterBar: {
     paddingHorizontal: GRID_GAP * 2,
-    paddingTop: 12,
-    paddingBottom: 4,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
   },
   selectionBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: GRID_GAP * 2,
-    paddingTop: 12,
-    paddingBottom: 4,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
   },
   selectionCount: {
-    fontSize: 15,
-    fontWeight: '600',
+    ...typography.label,
   },
   selectionActions: {
     flexDirection: 'row',
-    gap: 8,
+    gap: spacing.sm,
   },
   deleteError: {
     marginHorizontal: GRID_GAP * 2,
-    marginTop: 8,
+    marginTop: spacing.sm,
   },
   gridContent: {
     padding: GRID_GAP / 2,
   },
   cell: {
-    // Percentage width + inner padding (rather than `flex` + a row gap)
-    // keeps each row exactly the container's width — no risk of the last
-    // column overflowing.
     padding: GRID_GAP / 2,
     position: 'relative',
   },
@@ -272,20 +247,20 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: GRID_GAP / 2 + 6,
     right: GRID_GAP / 2 + 6,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
   },
   checkBadgeText: {
-    fontSize: 14,
+    ...typography.caption,
+    color: '#fff',
     fontWeight: '700',
   },
   thumbnail: {
     width: '100%',
     aspectRatio: 1,
-    borderRadius: 8,
-    backgroundColor: 'rgba(0,0,0,0.05)',
+    borderRadius: radius.md,
   },
 });
