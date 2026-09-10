@@ -10,3 +10,4 @@ pyjwt
 email-validator
 boto3
 openai
+pillow

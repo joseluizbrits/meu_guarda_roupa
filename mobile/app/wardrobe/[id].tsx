@@ -171,6 +171,15 @@ export default function WardrobeItemScreen() {
 
             <View style={styles.reprocessSection}>
               <Button
+                title="Gerar foto de produto"
+                onPress={() =>
+                  router.push({
+                    pathname: '/wardrobe/mask-editor',
+                    params: { id: item.id, photoUrl: item.photo_url },
+                  })
+                }
+              />
+              <Button
                 title={reprocessing ? 'Reprocessing...' : 'Reprocess background removal'}
                 onPress={handleReprocess}
                 loading={reprocessing}

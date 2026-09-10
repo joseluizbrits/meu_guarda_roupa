@@ -1,5 +1,6 @@
 """CRUD for a user's wardrobe items (a user has many, most-recent-first)."""
 
+import asyncio
 import logging
 import uuid
 
@@ -192,6 +193,101 @@ async def set_texture(
         )
 
     item.texture_asset_id = texture_asset_id
+    await db.commit()
+    await db.refresh(item)
+    return item
+
+
+async def virtualize_item(
+    db: AsyncSession,
+    user: User,
+    item_id: uuid.UUID,
+    mask_asset_id: uuid.UUID | None,
+) -> WardrobeItem | None:
+    """Re-generate an AI product photo, optionally using a client-supplied
+    mask to guide which garment area to preserve.
+
+    Unlike the background `_generate_ai_photo` job, this is a *synchronous*
+    endpoint: it blocks until the AI result is stored so the caller can
+    immediately show the new image.  Raises explicit HTTP errors instead of
+    fail-open, because the user is waiting for a result.
+    """
+    item = await get_item(db, user, item_id)
+    if item is None:
+        return None
+
+    # --- load raw photo from S3 ----------------------------------------
+    photo_asset = await asset_service.get_asset(db, item.photo_asset_id)
+    if photo_asset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Original photo asset not found.",
+        )
+
+    # --- validate + load optional mask ----------------------------------
+    mask_bytes: bytes | None = None
+    if mask_asset_id is not None:
+        mask_asset = await asset_service.get_asset(db, mask_asset_id)
+        if (
+            mask_asset is None
+            or mask_asset.owner_user_id != user.id
+            or mask_asset.kind != "garment_mask"
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="mask_asset_id does not reference an asset you own.",
+            )
+        mask_object = s3_client.get_object(
+            Bucket=settings.minio_bucket, Key=mask_asset.storage_key
+        )
+        mask_bytes = mask_object["Body"].read()
+
+    # --- abort early if AI key missing (explicit, not fail-open) -------
+    if not settings.openai_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OPENAI_API_KEY not configured on the server — cannot generate AI product photos.",
+        )
+
+    # --- read photo bytes (must happen in async context) ---------------
+    photo_object = s3_client.get_object(
+        Bucket=settings.minio_bucket, Key=photo_asset.storage_key
+    )
+    photo_bytes = photo_object["Body"].read()
+
+    # --- blocking AI + storage work in thread (no DB/async inside) ------
+    def _blocking() -> bytes | None:
+        return ai_image_service.generate_clean_product_photo(
+            photo_bytes, mask_bytes
+        )
+
+    ai_bytes = await asyncio.to_thread(_blocking)
+    if ai_bytes is None:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="AI image generation failed — try again later.",
+        )
+
+    storage_key = f"garment_ai_photo/{user.id}/{uuid.uuid4()}"
+    s3_client.put_object(
+        Bucket=settings.minio_bucket,
+        Key=storage_key,
+        Body=ai_bytes,
+        ContentType="image/png",
+    )
+
+    # --- back in coroutine: persist asset + link to item ----------------
+    asset = Asset(
+        kind="garment_ai_photo",
+        storage_key=storage_key,
+        content_type="image/png",
+        owner_user_id=user.id,
+    )
+    db.add(asset)
+    await db.commit()
+    await db.refresh(asset)
+
+    item.ai_photo_asset_id = asset.id
     await db.commit()
     await db.refresh(item)
     return item

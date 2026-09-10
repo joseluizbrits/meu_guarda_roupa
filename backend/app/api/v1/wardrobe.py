@@ -10,6 +10,7 @@ from app.schemas.wardrobe_item import (
     WardrobeItemRead,
     WardrobeItemSetTexture,
     WardrobeItemUpdate,
+    WardrobeItemVirtualize,
 )
 from app.services import wardrobe_service
 
@@ -76,6 +77,23 @@ async def set_wardrobe_item_texture(
 ) -> WardrobeItemRead:
     item = await wardrobe_service.set_texture(
         db, current_user, item_id, data.texture_asset_id
+    )
+    if item is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Wardrobe item not found."
+        )
+    return await wardrobe_service.to_read(db, item)
+
+
+@router.post("/{item_id}/virtualize", response_model=WardrobeItemRead)
+async def virtualize_wardrobe_item(
+    item_id: uuid.UUID,
+    data: WardrobeItemVirtualize,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> WardrobeItemRead:
+    item = await wardrobe_service.virtualize_item(
+        db, current_user, item_id, data.mask_asset_id
     )
     if item is None:
         raise HTTPException(

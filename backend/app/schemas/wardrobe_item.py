@@ -43,6 +43,10 @@ class WardrobeItemSetTexture(BaseModel):
     texture_asset_id: uuid.UUID
 
 
+class WardrobeItemVirtualize(BaseModel):
+    mask_asset_id: uuid.UUID | None = None
+
+
 class WardrobeItemRead(BaseModel):
     id: uuid.UUID
     category: str
