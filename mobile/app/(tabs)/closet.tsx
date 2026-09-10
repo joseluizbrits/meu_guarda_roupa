@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, Pressable, StyleSheet, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, useWindowDimensions } from 'react-native';
+import { Image } from 'expo-image';
 import { router, useFocusEffect } from 'expo-router';
 
 import Colors from '@/constants/Colors';
@@ -187,10 +188,12 @@ export default function ClosetScreen() {
                 accessibilityRole="button"
                 accessibilityState={{ selected }}
                 accessibilityLabel={`${item.category} item`}>
-                <Image
+<Image
                   source={{ uri: item.ai_photo_url ?? item.texture_url ?? item.photo_url }}
-                  style={[styles.thumbnail, selected && { borderColor: tint, borderWidth: 3 }]}
-                  resizeMode="contain"
+                  style={styles.thumbnail}
+                  contentFit="cover"
+                  cachePolicy="disk"
+                  transition={150}
                 />
                 {selected ? (
                   <View style={[styles.checkBadge, { backgroundColor: tint }]} lightColor={tint} darkColor={tint}>

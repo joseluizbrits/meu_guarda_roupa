@@ -80,5 +80,9 @@ class WardrobeItemRead(BaseModel):
     # see wardrobe_service._generate_ai_photo.
     ai_photo_asset_id: uuid.UUID | None
     ai_photo_url: str | None
+    # AI product photo with white background keyed to transparent — the
+    # texture the 3D avatar wears. Falls back to texture_url on the client.
+    ai_texture_asset_id: uuid.UUID | None
+    ai_texture_url: str | None
     created_at: datetime
     updated_at: datetime

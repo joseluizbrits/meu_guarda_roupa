@@ -22,6 +22,11 @@ export type WardrobeItemRead = {
   // forever if OPENAI_API_KEY isn't configured server-side.
   ai_photo_asset_id: string | null;
   ai_photo_url: string | null;
+  // The AI product photo with its white background keyed to transparent —
+  // what the 3D avatar wears. Falls back to texture_url (on-device cutout)
+  // when null.
+  ai_texture_asset_id: string | null;
+  ai_texture_url: string | null;
   created_at: string;
   updated_at: string;
 };

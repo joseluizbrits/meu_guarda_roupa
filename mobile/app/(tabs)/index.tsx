@@ -1,13 +1,32 @@
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import { useFocusEffect } from 'expo-router';
 
 import { Text, View } from '@/components/Themed';
 import { ErrorText } from '@/src/components/atoms/ErrorText';
 import { AvatarResponse, getAvatar } from '@/src/core/api/avatar';
 import { getMeasurements, MeasurementsResponse } from '@/src/core/api/measurements';
-import { listWardrobeItems, WardrobeItemRead } from '@/src/core/api/wardrobe';
+import { listWardrobeItems, WardrobeCategory, WardrobeItemRead } from '@/src/core/api/wardrobe';
 import { Avatar3DView } from '@/src/features/avatar/Avatar3DView';
+import { warmTextureCache } from '@/src/features/avatar/avatarTextures';
+
+/**
+ * Body region per garment category — the rule that makes multiple garments
+ * coexist on the avatar. One slot per region:
+ *   - upper: top / outerwear (both cover the torso)
+ *   - lower: bottom
+ *   - dress: full-body (competes with upper + lower)
+ *   - feet:  shoes
+ *   - accessory: no body region — closet-only.
+ */
+const REGION_BY_CATEGORY: Partial<Record<WardrobeCategory, string>> = {
+  top: 'upper',
+  outerwear: 'upper',
+  bottom: 'lower',
+  dress: 'dress',
+  shoes: 'feet',
+};
 
 /**
  * "Fitting Room" tab — the user's 3D avatar, built from their stored
@@ -21,7 +40,8 @@ export default function FittingRoomScreen() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [wardrobeItems, setWardrobeItems] = useState<WardrobeItemRead[]>([]);
-  const [equippedItem, setEquippedItem] = useState<WardrobeItemRead | null>(null);
+  // One garment per body region, so top + bottom + shoes can be worn at once.
+  const [equippedByRegion, setEquippedByRegion] = useState<Record<string, WardrobeItemRead>>({});
 
   // Refetches on every focus (rather than a store), same reasoning as
   // `closet.tsx` — reflects items added/edited in the closet tab without
@@ -33,6 +53,16 @@ export default function FittingRoomScreen() {
         .then((result) => {
           if (!cancelled) {
             setWardrobeItems(result);
+            // Pre-warm the 3D texture cache with every wearable texture so
+            // trying an item on is instant (no fetch when the shell is
+            // attached later on). The AI transparent texture wins over the
+            // on-device cutout; expo-image disk caches the picker
+            // thumbnails separately.
+            warmTextureCache(
+              result
+                .map((item) => item.ai_texture_url ?? item.texture_url)
+                .filter((url): url is string => Boolean(url))
+            );
           }
         })
         .catch(() => {
@@ -76,6 +106,102 @@ export default function FittingRoomScreen() {
     };
   }, []);
 
+  // The picker shows EVERY non-accessory item — not just the textured ones.
+  // A freshly-created piece often has no texture yet (backend AI photo runs
+  // as a background job / the on-device cutout failed); hiding it made the
+  // picker look like pieces were lost. Items without `ai_texture_url` /
+  // `texture_url` render dimmed with a "processando…" badge and only become
+  // tappable once a texture arrives (see the polling effect below).
+  const pickerItems = useMemo(
+    () => wardrobeItems.filter((item) => item.category !== 'accessory'),
+    [wardrobeItems]
+  );
+
+  const hasPendingTextures = useMemo(
+    () => pickerItems.some((item) => !item.ai_texture_url && !item.texture_url),
+    [pickerItems]
+  );
+
+  // Poll while any item is still missing its wear texture (AI job runs
+  // server-side after creation). Stops after ~72s so a permanently-failed
+  // item doesn't ping forever.
+  const pollCountRef = useRef(0);
+  useEffect(() => {
+    if (!hasPendingTextures || pollCountRef.current >= 12) {
+      return;
+    }
+    const timer = setTimeout(async () => {
+      pollCountRef.current += 1;
+      try {
+        const result = await listWardrobeItems();
+        setWardrobeItems(result);
+        warmTextureCache(
+          result
+            .map((item) => item.ai_texture_url ?? item.texture_url)
+            .filter((url): url is string => Boolean(url))
+        );
+      } catch {
+        // Keep current list; next poll or focus will retry.
+      }
+    }, 6000);
+    return () => clearTimeout(timer);
+  }, [hasPendingTextures, pollCountRef, wardrobeItems]);
+
+  const equippedGarments = useMemo(
+    () =>
+      Object.values(equippedByRegion)
+        .filter(
+          (item): item is WardrobeItemRead & { textureUrl: string } =>
+            Boolean(item.ai_texture_url ?? item.texture_url)
+        )
+        .map((item) => ({
+          id: item.id,
+          category: item.category,
+          textureUrl: (item.ai_texture_url ?? item.texture_url) as string,
+        })),
+    [equippedByRegion]
+  );
+
+  const isEquipped = useCallback(
+    (item: WardrobeItemRead) => equippedByRegion[REGION_BY_CATEGORY[item.category] ?? '']?.id === item.id,
+    [equippedByRegion]
+  );
+
+  const hasTexture = useCallback(
+    (item: WardrobeItemRead) => Boolean(item.ai_texture_url ?? item.texture_url),
+    []
+  );
+
+  function toggleItem(item: WardrobeItemRead) {
+    const region = REGION_BY_CATEGORY[item.category];
+    if (!region || !hasTexture(item)) {
+      return;
+    }
+    setEquippedByRegion((prev) => {
+      // Tapping the currently-worn garment takes it off.
+      if (prev[region]?.id === item.id) {
+        const next = { ...prev };
+        delete next[region];
+        return next;
+      }
+      // Wearing an item that covers the whole body (dress) drops the torso
+      // and leg slots so they don't fight over the same surface.
+      const next = { ...prev, [region]: item };
+      if (item.category === 'dress') {
+        delete next.upper;
+        delete next.lower;
+      } else if (REGION_BY_CATEGORY[item.category] === 'upper' || REGION_BY_CATEGORY[item.category] === 'lower') {
+        // Putting on a top/bottom when a dress is worn removes the dress.
+        delete next.dress;
+      }
+      return next;
+    });
+  }
+
+  function takeAllOff() {
+    setEquippedByRegion({});
+  }
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -92,11 +218,7 @@ export default function FittingRoomScreen() {
     );
   }
 
-  // Only items with a real segmented cutout can be worn — a raw photo
-  // (background and all) stamped on the avatar as a decal would render a
-  // visible rectangle, not a garment. `accessory` also stays closet-only
-  // (see `garmentPlacement.ts` — no single generalizable body region).
-  const wearableItems = wardrobeItems.filter((item) => item.texture_url && item.category !== 'accessory');
+  const equippedCount = Object.keys(equippedByRegion).length;
 
   return (
     <View style={styles.container}>
@@ -104,7 +226,6 @@ export default function FittingRoomScreen() {
       <Text style={styles.hint}>Drag to rotate</Text>
       <View style={styles.viewport}>
         <Avatar3DView
-          key={equippedItem?.id ?? 'none'}
           measurements={{
             height_cm: measurements.height_cm,
             chest_cm: measurements.chest_cm,
@@ -114,40 +235,54 @@ export default function FittingRoomScreen() {
             inseam_cm: measurements.inseam_cm,
           }}
           faceTextureUrl={avatar.face_texture_url}
-          equippedGarment={
-            equippedItem && equippedItem.texture_url
-              ? { category: equippedItem.category, textureUrl: equippedItem.texture_url }
-              : null
-          }
+          equippedGarments={equippedGarments}
         />
       </View>
 
-      {wearableItems.length > 0 ? (
+      {pickerItems.length > 0 ? (
         <View style={styles.picker}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickerContent}>
-            {equippedItem ? (
+            {equippedCount > 0 ? (
               <Pressable
                 style={[styles.pickerItem, styles.takeOff]}
-                onPress={() => setEquippedItem(null)}
+                onPress={takeAllOff}
                 accessibilityRole="button"
-                accessibilityLabel="Take off">
+                accessibilityLabel="Take off all">
                 <Text style={styles.takeOffText}>Take off</Text>
               </Pressable>
             ) : null}
-            {wearableItems.map((item) => (
-              <Pressable
-                key={item.id}
-                style={[styles.pickerItem, equippedItem?.id === item.id && styles.pickerItemActive]}
-                onPress={() => setEquippedItem(item)}
-                accessibilityRole="button"
-                accessibilityLabel={`Try on ${item.category}`}>
-                <Image
-                  source={{ uri: item.ai_photo_url ?? item.texture_url! }}
-                  style={styles.pickerThumbnail}
-                  resizeMode="contain"
-                />
-              </Pressable>
-            ))}
+            {pickerItems.map((item) => {
+              const ready = hasTexture(item);
+              return (
+                <Pressable
+                  key={item.id}
+                  disabled={!ready}
+                  style={[
+                    styles.pickerItem,
+                    isEquipped(item) && styles.pickerItemActive,
+                    !ready && styles.pickerItemPending,
+                  ]}
+                  onPress={() => toggleItem(item)}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: !ready }}
+                  accessibilityLabel={`Try on ${item.category}`}>
+                  <Image
+                    source={{ uri: item.ai_photo_url ?? item.texture_url ?? item.photo_url }}
+                    style={styles.pickerThumbnail}
+                    contentFit="cover"
+                    cachePolicy="disk"
+                    transition={150}
+                  />
+                  {!ready ? (
+                    <View style={styles.pickerBadge}>
+                      <Text style={styles.pickerBadgeText}>
+                        {item.ai_photo_url ? 'sem corte' : 'processando…'}
+                      </Text>
+                    </View>
+                  ) : null}
+                </Pressable>
+              );
+            })}
           </ScrollView>
         </View>
       ) : null}
@@ -197,6 +332,23 @@ const styles = StyleSheet.create({
   },
   pickerItemActive: {
     borderColor: '#2f95dc',
+  },
+  pickerItemPending: {
+    opacity: 0.55,
+  },
+  pickerBadge: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingVertical: 2,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  pickerBadgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   pickerThumbnail: {
     width: '100%',
