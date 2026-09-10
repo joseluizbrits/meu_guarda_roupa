@@ -19,12 +19,22 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.REQUEST_INSTALL_PACKAGES"
+      ]
     },
     "web": {
       "bundler": "metro",
       "output": "static",
       "favicon": "./assets/images/favicon.png"
+    },
+    "runtimeVersion": "1",
+    "updates": {
+      "url": "https://guardaroupa.rafaelferro.dev/api/updates/manifest",
+      "enabled": true,
+      "checkAutomatically": "NEVER",
+      "fallbackToCacheTimeout": 0
     },
     "plugins": [
       "expo-router",
@@ -51,7 +61,9 @@
         {
           "photosPermission": "Allow Meu Guarda-roupa to access your photos to add garments from your gallery."
         }
-      ]
+      ],
+      "expo-updates",
+      "./plugins/withAndroidUpdatePermissions.js"
     ],
     "experiments": {
       "typedRoutes": true

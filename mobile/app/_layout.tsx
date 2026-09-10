@@ -2,7 +2,7 @@ import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
-import { ActivityIndicator } from 'react-native';
+import { ActivityIndicator, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
@@ -10,6 +10,7 @@ import { View } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAuthStore } from '@/src/core/auth/authStore';
 import { useOnboardingStatusStore } from '@/src/features/onboarding/onboardingStatusStore';
+import { useUpdateStore } from '@/src/core/updates/updateStore';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -63,6 +64,9 @@ function RootLayoutNav() {
   const onboardingStatus = useOnboardingStatusStore((state) => state.status);
   const checkOnboarding = useOnboardingStatusStore((state) => state.check);
   const resetOnboarding = useOnboardingStatusStore((state) => state.reset);
+  
+  // Update store for auto-check on launch
+  const checkUpdate = useUpdateStore((state) => state.check);
 
   useEffect(() => {
     hydrate();
@@ -75,6 +79,13 @@ function RootLayoutNav() {
       resetOnboarding();
     }
   }, [isAuthenticated, checkOnboarding, resetOnboarding]);
+
+  // Auto-check for updates on launch (once)
+  useEffect(() => {
+    if (isAuthenticated) {
+      checkUpdate();
+    }
+  }, [isAuthenticated, checkUpdate]);
 
   const waitingOnOnboardingCheck = isAuthenticated && onboardingStatus === 'unknown';
 
