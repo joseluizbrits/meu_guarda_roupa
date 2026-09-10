@@ -43,7 +43,7 @@ export default function GarmentCaptureScreen() {
       }
       const contentType = CONTENT_TYPE_BY_FORMAT[photo.format] ?? 'image/jpeg';
       setPhoto(photo.uri, photo.width, photo.height, contentType);
-      router.push('/wardrobe/tag');
+      router.replace('/wardrobe/select-pieces');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not capture photo. Please try again.');
     } finally {
@@ -68,7 +68,7 @@ export default function GarmentCaptureScreen() {
       const asset = result.assets[0];
       const contentType = asset.mimeType ?? 'image/jpeg';
       setPhoto(asset.uri, asset.width, asset.height, contentType);
-      router.push('/wardrobe/tag');
+      router.replace('/wardrobe/select-pieces');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not pick a photo. Please try again.');
     } finally {

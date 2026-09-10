@@ -2,6 +2,14 @@ import { api } from '@/src/core/api/client';
 
 export type WardrobeCategory = 'top' | 'bottom' | 'dress' | 'outerwear' | 'shoes' | 'accessory';
 
+export type DetectedBox = { x_min: number; y_min: number; x_max: number; y_max: number };
+export type DetectedPiece = { label: string; category: WardrobeCategory; box: DetectedBox; confidence: number };
+export type DetectGarmentsResult = { pieces: DetectedPiece[] };
+
+export async function detectGarments(photoAssetId: string): Promise<DetectGarmentsResult> {
+  return api.post<DetectGarmentsResult>('/api/v1/wardrobe-items/detect', { photo_asset_id: photoAssetId });
+}
+
 export type WardrobeItemRead = {
   id: string;
   category: WardrobeCategory;
