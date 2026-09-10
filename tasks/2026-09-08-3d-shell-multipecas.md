@@ -1,6 +1,6 @@
 # Otimizar render 3D + vestir boneco com múltiplas peças (shell volumétrico)
 
-- **Status:** Needs Fixes
+- **Status:** Done
 - **Branch:** task/3d-shell-multipecas
 - **Goal:** Boneco 3D carrega + troca peças rápido; múltiplas peças simultâneas (1 por região: upper/lower/dress/feet); roupa vira malha 3D volumétrica envolvente (não decal plano).
 - **Context:** Hoje `Avatar3DView` usa decal plano transparente flutuando na frente do corpo, 1 peça só (`equippedItem` single), troca de peça remonta GLView inteiro via `key` (re-parse GLB 1.9MB + texturas → demora). Render loop RAF 60fps incondicional. GLB BaseHuman.glb = 1 mesh skinned, 5 primitives cobrindo o corpo inteiro (sem slots por região), UVs existem (TEXCOORD_0). Decisão do usuário: shell 3D volumétrico (malha curva 360°) + uma peça por região. Refinamentos pós-demo (usuário): (1) boneco voltava com pose/posição diferente ao alternar abas (state acumulado no gltf compartilhado; fix = clone do scene por montagem via SkeletonUtils.clone); (2) boneco vestia cutout U2Net (foto real sem fundo, vinco de cabide) em vez da imagem IA; decisão do usuário: vestir com imagem IA transparente (`ai_texture_url`, chroma key do fundo branco server-side).
@@ -74,3 +74,4 @@ error TS5023: Unknown compiler option '--noEmit:'.
 - Pose: GLB sem anim/herança (parse binário: 0 transforms não-identidade, 0 animations) → torto vinha do runtime; removido rotacão 58° braços + refit viewport
 - select-pieces: backend 21:16 registrou detect 200 + apenas 2/5 criações (3 crops OOM silenciosos) — corrigido (sequencial) e alerta visível
 - OTA ec10eb82: manifest 200
+- **Encerrado**: chain toda mergeada em main (`7a7a5e2`, 4 merges em ordem via git); PRs 3–16 merged, 17–20 fechados; stack gh #21 concluído. Produção já roda (deploys diretos anteriores). Próxima feature: seguir fluxo `gh stack` desde o início.
