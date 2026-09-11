@@ -17,10 +17,12 @@ export NODE_OPTIONS="--max-old-space-size=4096"
 
 echo "[publish-js] Starting expo export (platform: android)..."
 
-# Run export with setsid to survive timeouts
-EXPORT_DIR="$MOBILE/dist"
+# Run export with setsid to survive timeouts. Output goes to dist-android so a
+# web export (mobile/dist) and the OTA bundle (this script) never clobber
+# each other — the web static server mounts mobile/dist.
+EXPORT_DIR="$MOBILE/dist-android"
 cd "$MOBILE"
-setsid npx expo export --platform android --output-dir dist > /tmp/expo-export.log 2>&1
+setsid npx expo export --platform android --output-dir dist-android > /tmp/expo-export.log 2>&1
 EXPORT_EXIT=$?
 
 if [ $EXPORT_EXIT -ne 0 ]; then

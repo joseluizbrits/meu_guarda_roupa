@@ -112,7 +112,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik_proxy"
-      - "traefik.http.routers.meu-guarda-backend.rule=Host(`${APP_HOST}`)"
+      - "traefik.http.routers.meu-guarda-backend.rule=Host(`${APP_HOST}`) && (PathPrefix(`/api`) || PathPrefix(`/downloads`) || PathPrefix(`/health`))"
       - "traefik.http.routers.meu-guarda-backend.entrypoints=websecure"
       - "traefik.http.routers.meu-guarda-backend.tls.certresolver=letsencrypt"
       - "traefik.http.services.meu-guarda-backend.loadbalancer.server.port=8000"
@@ -122,6 +122,38 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  web:
+    image: nginx:alpine
+    container_name: meu-guarda-web
+    hostname: meu-guarda-web
+    restart: unless-stopped
+    volumes:
+      - ./web/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../mobile/dist:/usr/share/nginx/html:ro
+    networks:
+      - default
+      - traefik_proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik_proxy"
+      - "traefik.http.routers.meu-guarda-web.rule=Host(`${APP_HOST}`)"
+      - "traefik.http.routers.meu-guarda-web.entrypoints=websecure"
+      - "traefik.http.routers.meu-guarda-web.tls.certresolver=letsencrypt"
+      - "traefik.http.services.meu-guarda-web.loadbalancer.server.port=80"
+    healthcheck:
+      # 127.0.0.1, not localhost: nginx binds IPv4; localhost may resolve to
+      # ::1 first and the check would fail (container never becomes healthy).
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/index.html"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
     logging:
       driver: json-file
       options:

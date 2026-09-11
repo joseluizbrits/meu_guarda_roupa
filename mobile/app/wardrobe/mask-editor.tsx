@@ -285,13 +285,12 @@ export default function MaskEditorScreen() {
         {error ? <ErrorText style={styles.error}>{error}</ErrorText> : null}
 
         <View style={styles.actions}>
-          <Button title="Cancelar" onPress={handleBack} disabled={busy} style={styles.secondaryButton} />
+          <Button title="Cancelar" variant="secondary" onPress={handleBack} disabled={busy} />
           <Button
             title={busy ? 'Gerando...' : 'Gerar foto de produto'}
             onPress={handleGenerate}
             loading={busy}
             disabled={busy}
-            style={styles.primaryButton}
           />
         </View>
       </ThemedView>
@@ -321,7 +320,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   photo: {
-    borderRadius: 12,
+    borderRadius: 14,
     backgroundColor: 'rgba(0,0,0,0.05)',
   },
   controls: {
@@ -352,12 +351,5 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     gap: 12,
-  },
-  secondaryButton: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  primaryButton: {
-    flex: 1,
   },
 });

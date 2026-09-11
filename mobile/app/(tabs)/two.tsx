@@ -1,8 +1,11 @@
-import { StyleSheet, View, Platform } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import * as Updates from 'expo-updates';
 
-import { Text } from '@/components/Themed';
+import Colors from '@/constants/Colors';
+import { spacing, radius, shadow, typography } from '@/constants/Theme';
+import { useColorScheme } from '@/components/useColorScheme';
+import { Text, View } from '@/components/Themed';
 import { Button } from '@/src/components/atoms/Button';
 import { ErrorText } from '@/src/components/atoms/ErrorText';
 import { useAuthStore } from '@/src/core/auth/authStore';
@@ -12,6 +15,8 @@ export default function ProfileScreen() {
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const { status, latest, progress, error, check, download, install, reset } = useUpdateStore();
+  const colorScheme = useColorScheme();
+  const colors = Colors[colorScheme];
 
   async function handleLogout() {
     await logout();
@@ -32,42 +37,49 @@ export default function ProfileScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Profile</Text>
-      <View style={styles.separator} />
-      {user ? (
-        <View style={styles.userInfo}>
-          <Text style={styles.name}>{user.full_name}</Text>
-          <Text style={styles.email}>{user.email}</Text>
-        </View>
-      ) : null}
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Profile header card */}
+      <View style={[styles.profileCard, { backgroundColor: colors.surface }, shadow.md]}>
+        <Text style={[styles.title, { color: colors.text }]}>Profile</Text>
+        {user ? (
+          <View style={styles.userInfo}>
+            <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
+              <Text style={styles.avatarText}>
+                {user.full_name?.charAt(0)?.toUpperCase() ?? '?'}
+              </Text>
+            </View>
+            <Text style={[styles.name, { color: colors.text }]}>{user.full_name}</Text>
+            <Text style={[styles.email, { color: colors.textSecondary }]}>{user.email}</Text>
+          </View>
+        ) : null}
+      </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Atualizações</Text>
-        <Text style={styles.status}>{statusLabels[status] || status}</Text>
+      {/* Updates section card */}
+      <View style={[styles.sectionCard, { backgroundColor: colors.surface }, shadow.sm]}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Atualizações</Text>
+        <Text style={[styles.status, { color: colors.textSecondary }]}>
+          {statusLabels[status] || status}
+        </Text>
         {error && <ErrorText style={styles.error}>{error}</ErrorText>}
 
         {status === 'downloading' && progress !== null && (
-          <View style={styles.progressContainer}>
+          <View style={[styles.progressContainer, { backgroundColor: colors.surfaceMuted }]}>
             <View
               style={[
                 styles.progressBar,
-                { width: `${Math.min(Math.max(progress, 0), 100)}%` },
+                { width: `${Math.min(Math.max(progress, 0), 100)}%`, backgroundColor: colors.primary },
               ]}
             />
-            <Text style={styles.progressText}>{progress}%</Text>
+            <Text style={[styles.progressText, { color: colors.textMuted }]}>{progress}%</Text>
           </View>
         )}
 
         <View style={styles.buttonRow}>
           {status === 'idle' || status === 'up_to_date' || status === 'error' || status === 'ota_available' ? (
-            <Button title="Verificar atualização" onPress={() => { check(); reset(); }} />
+            <Button title="Verificar atualização" variant="secondary" onPress={() => { check(); reset(); }} />
           ) : null}
-
           {status === 'update_available' && <Button title="Baixar" onPress={download} />}
-
           {status === 'ready_to_install' && <Button title="Instalar agora" onPress={install} />}
-
           {status === 'ota_available' && (
             <Button title="Reiniciar para aplicar" onPress={() => Updates.reloadAsync()} />
           )}
@@ -75,7 +87,7 @@ export default function ProfileScreen() {
       </View>
 
       <View style={styles.logoutButton}>
-        <Button title="Log out" onPress={handleLogout} />
+        <Button title="Log out" variant="outline" onPress={handleLogout} />
       </View>
     </View>
   );
@@ -86,65 +98,73 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: spacing['2xl'],
+    gap: spacing.lg,
+  },
+  profileCard: {
+    width: '100%',
+    alignItems: 'center',
+    padding: spacing['2xl'],
+    borderRadius: radius.lg,
   },
   title: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  separator: {
-    marginVertical: 30,
-    height: 1,
-    width: '100%',
+    ...typography.h2,
+    marginBottom: spacing.lg,
   },
   userInfo: {
     alignItems: 'center',
-    marginBottom: 32,
+    gap: spacing.sm,
+  },
+  avatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  avatarText: {
+    ...typography.h2,
+    color: '#FFFFFF',
   },
   name: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
+    ...typography.h3,
   },
   email: {
-    fontSize: 14,
-    opacity: 0.7,
+    ...typography.body,
   },
-  section: {
+  sectionCard: {
     width: '100%',
-    alignItems: 'center',
-    marginBottom: 32,
+    padding: spacing['2xl'],
+    borderRadius: radius.lg,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 12,
-    alignSelf: 'flex-start',
+    ...typography.h3,
+    marginBottom: spacing.md,
   },
   status: {
-    fontSize: 14,
-    opacity: 0.8,
-    marginBottom: 8,
+    ...typography.body,
+    marginBottom: spacing.sm,
     textAlign: 'center',
   },
   error: {
-    marginBottom: 12,
+    marginBottom: spacing.md,
     width: '100%',
   },
   progressContainer: {
     width: '100%',
-    marginBottom: 16,
+    height: 8,
+    borderRadius: radius.pill,
+    marginBottom: spacing.lg,
+    overflow: 'hidden',
   },
   progressBar: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#007AFF',
+    height: '100%',
+    borderRadius: radius.pill,
   },
   progressText: {
-    fontSize: 12,
-    opacity: 0.7,
-    marginTop: 4,
+    ...typography.caption,
+    marginTop: spacing.xs,
     textAlign: 'right',
   },
   buttonRow: {
@@ -152,7 +172,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: 12,
+    gap: spacing.sm,
   },
   logoutButton: {
     width: '100%',

@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Image, StyleSheet } from 'react-native';
 import { Stack, router } from 'expo-router';
 
+import Colors from '@/constants/Colors';
+import { spacing, radius, typography } from '@/constants/Theme';
+import { useColorScheme } from '@/components/useColorScheme';
 import { Text, View } from '@/components/Themed';
 import { Button } from '@/src/components/atoms/Button';
 import { ErrorText } from '@/src/components/atoms/ErrorText';
@@ -12,42 +15,27 @@ import { readUriBytes } from '@/src/features/avatar/faceTexture/readUriBytes';
 import { classifyGarmentPhoto, type GarmentClassification } from '@/src/features/wardrobe/classification/garmentClassifier';
 import { useCapturedGarmentPhotoStore } from '@/src/features/wardrobe/capturedGarmentPhotoStore';
 
-/**
- * Manual single-garment fallback: shows the just-taken photo, lets the user
- * pick its category, then on confirm uploads the raw photo (unchanged) and
- * creates the wardrobe item. This is the escape hatch when automatic
- * multi-garment detection found nothing — the primary flow from capture goes
- * straight to `select-pieces`. No background removal here: the raw photo is
- * kept as-is and no cutout is produced or saved. `classifyGarmentPhoto` runs
- * best-effort against the raw photo just to persist an `ml_analysis` hint on
- * save (fills a blank category when it resolves before the user picks).
- */
 export default function TagGarmentScreen() {
   const photoUri = useCapturedGarmentPhotoStore((state) => state.uri);
   const contentType = useCapturedGarmentPhotoStore((state) => state.contentType);
   const clearPhoto = useCapturedGarmentPhotoStore((state) => state.clear);
+  const colorScheme = useColorScheme();
+  const colors = Colors[colorScheme];
 
   const [category, setCategory] = useState<WardrobeCategory | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [classification, setClassification] = useState<GarmentClassification | null>(null);
-  // Same trick as `app/onboarding/review.tsx`: `clearPhoto()` on success
-  // flips `photoUri` to null right before navigating away, which would
-  // otherwise race the "no photo, go capture one" redirect below.
   const confirmedSuccessfully = useRef(false);
 
   useEffect(() => {
     if (!photoUri && !confirmedSuccessfully.current) {
-      // Nothing captured (e.g. deep-linked straight into this screen) —
-      // send the user back to capture a photo first.
       router.replace('/wardrobe/capture');
     }
   }, [photoUri]);
 
   useEffect(() => {
-    if (!photoUri) {
-      return;
-    }
+    if (!photoUri) return;
     let cancelled = false;
     (async () => {
       try {
@@ -55,26 +43,16 @@ export default function TagGarmentScreen() {
         if (!cancelled) {
           setClassification(classificationResult);
           if (classificationResult?.suggestedCategory) {
-            // Functional update, not a direct read of `category`: this
-            // resolves a second or two after the photo is taken, so the
-            // user may have already picked a category by hand while
-            // waiting — never clobber that, only fill in an actual blank.
             setCategory((current) => current ?? classificationResult.suggestedCategory);
           }
         }
-      } catch {
-        // Best-effort — classification is only a hint at save time.
-      }
+      } catch {}
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [photoUri]);
 
   async function handleConfirm() {
-    if (!photoUri || !contentType || !category) {
-      return;
-    }
+    if (!photoUri || !contentType || !category) return;
     setError(null);
     setSaving(true);
     try {
@@ -94,7 +72,6 @@ export default function TagGarmentScreen() {
             }
           : undefined,
       });
-
       confirmedSuccessfully.current = true;
       clearPhoto();
       router.replace('/closet');
@@ -110,21 +87,23 @@ export default function TagGarmentScreen() {
     router.replace('/wardrobe/capture');
   }
 
-  if (!photoUri) {
-    // The effect above is already redirecting away — render nothing
-    // in the meantime rather than crashing on a null image source.
-    return null;
-  }
+  if (!photoUri) return null;
 
   return (
     <>
       <Stack.Screen options={{ title: 'Adicionar peça' }} />
-      <View style={styles.container}>
-        <Text style={styles.title}>Qual é esta peça?</Text>
-        <Text style={styles.subtitle}>Escolha a categoria desta peça.</Text>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <Text style={[styles.title, { color: colors.primary }]}>Qual é esta peça?</Text>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+          Escolha a categoria desta peça.
+        </Text>
 
         <View style={styles.previewWrapper}>
-          <Image source={{ uri: photoUri }} style={styles.preview} resizeMode="contain" />
+          <Image
+            source={{ uri: photoUri }}
+            style={[styles.preview, { backgroundColor: colors.surfaceMuted }]}
+            resizeMode="contain"
+          />
         </View>
 
         <CategoryPicker value={category} onChange={setCategory} disabled={saving} />
@@ -137,9 +116,13 @@ export default function TagGarmentScreen() {
           loading={saving}
           disabled={!category || saving}
         />
-        <View style={styles.retake}>
-          <Button title="Refazer foto" onPress={handleRetake} disabled={saving} />
-        </View>
+        <Button
+          title="Refazer foto"
+          variant="secondary"
+          onPress={handleRetake}
+          disabled={saving}
+          style={styles.retake}
+        />
       </View>
     </>
   );
@@ -148,36 +131,33 @@ export default function TagGarmentScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 24,
+    padding: spacing['2xl'],
     alignItems: 'center',
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 8,
+    ...typography.h1,
+    marginBottom: spacing.sm,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 14,
-    opacity: 0.7,
-    marginBottom: 24,
+    ...typography.body,
+    marginBottom: spacing['2xl'],
     textAlign: 'center',
   },
   previewWrapper: {
     width: '100%',
-    marginBottom: 24,
+    marginBottom: spacing['2xl'],
   },
   preview: {
     width: '100%',
     aspectRatio: 1,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.05)',
+    borderRadius: radius.lg,
   },
   error: {
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   retake: {
-    marginTop: 12,
+    marginTop: spacing.md,
     width: '100%',
   },
 });

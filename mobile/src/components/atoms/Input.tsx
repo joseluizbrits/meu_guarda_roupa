@@ -1,31 +1,54 @@
-import { forwardRef } from 'react';
+import { forwardRef, useState } from 'react';
 import { StyleSheet, TextInput, TextInputProps } from 'react-native';
 
-import { useThemeColor } from '@/components/Themed';
+import Colors from '@/constants/Colors';
+import { radius, spacing, typography } from '@/constants/Theme';
 import { useColorScheme } from '@/components/useColorScheme';
 
 export const Input = forwardRef<TextInput, TextInputProps>(function Input(props, ref) {
   const colorScheme = useColorScheme();
-  const color = useThemeColor({}, 'text');
-  const borderColor = colorScheme === 'dark' ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.15)';
-  const placeholderTextColor = colorScheme === 'dark' ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)';
+  const colors = Colors[colorScheme];
+  const [focused, setFocused] = useState(false);
 
   return (
     <TextInput
       ref={ref}
-      placeholderTextColor={placeholderTextColor}
+      placeholderTextColor={colors.textMuted}
+      onFocus={(e) => {
+        setFocused(true);
+        props.onFocus?.(e);
+      }}
+      onBlur={(e) => {
+        setFocused(false);
+        props.onBlur?.(e);
+      }}
       {...props}
-      style={[styles.input, { color, borderColor }, props.style]}
+      style={[
+        styles.input,
+        {
+          color: colors.text,
+          backgroundColor: colors.surface,
+          borderColor: focused ? colors.borderFocused : colors.border,
+        },
+        focused && styles.focused,
+        props.style,
+      ]}
     />
   );
 });
 
 const styles = StyleSheet.create({
   input: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
+    borderWidth: 1.5,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md + 1,
+    fontSize: typography.body.fontSize,
+    fontWeight: typography.body.fontWeight,
+    lineHeight: typography.body.lineHeight,
+    minHeight: 48,
+  },
+  focused: {
+    borderWidth: 2,
   },
 });
