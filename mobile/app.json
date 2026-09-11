@@ -2,7 +2,7 @@
   "expo": {
     "name": "Meu Guarda-roupa",
     "slug": "meu-guarda-roupa",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "mobile",
@@ -12,7 +12,7 @@
     },
     "android": {
       "package": "com.rafaelferro.meuguardaroupa",
-      "versionCode": 4,
+      "versionCode": 5,
       "adaptiveIcon": {
         "backgroundColor": "#FAF8F6",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
