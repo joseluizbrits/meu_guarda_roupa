@@ -7,6 +7,19 @@ import { bindPosePosition } from './bindPose';
 import { readUriBytes } from './faceTexture/readUriBytes';
 
 /**
+ * Body metrics derived from BaseHuman.glb bind pose via measure-body-metrics.mjs.
+ * Update if the rig (BaseHuman.glb) changes.
+ */
+const BODY_METRICS = {
+  shouldersArms: { width: 1.1081, depth: 0.2395, centerZ: 0.0353 },
+  shouldersOnly: { width: 1.0995, depth: 0.2395, centerZ: 0.0353 },
+  waist: { width: 0.4161, depth: 0.2225, centerZ: 0.0286 },
+  hips: { width: 0.4391, depth: 0.1844, centerZ: 0.0275 },
+  footZ: 0.0065,
+  toesZ: 0.1539,
+} as const;
+
+/**
  * Real garment meshes by category.
  *
  * The old `garmentShell.ts` stamped the transparent cutout onto a plain
@@ -179,7 +192,24 @@ function geometryExtent(mesh: THREE.Mesh, axis: 'x' | 'y' | 'z'): { min: number;
   return { min: geometry.boundingBox.min[axis], max: geometry.boundingBox.max[axis] };
 }
 
-/** Torso categories: top / outerwear / dress. Scale to the neck→bottom-bone span, center on spine02. */
+/** Get geometry width/depth/height extents. */
+function geometryExtents(mesh: THREE.Mesh): { width: number; height: number; depth: number } | null {
+  const geometry = mesh.geometry as THREE.BufferGeometry;
+  if (!geometry.boundingBox) {
+    geometry.computeBoundingBox();
+  }
+  if (!geometry.boundingBox) {
+    return null;
+  }
+  const box = geometry.boundingBox;
+  return {
+    width: box.max.x - box.min.x,
+    height: box.max.y - box.min.y,
+    depth: box.max.z - box.min.z,
+  };
+}
+
+/** Torso categories: top / outerwear / dress. Scale per axis, center on real body centerZ per band. */
 function fitTorso(
   mesh: THREE.Mesh,
   skinnedMesh: THREE.SkinnedMesh,
@@ -188,50 +218,93 @@ function fitTorso(
   const { bottomBone, heightFactor } = FIT[category];
   const neck = bindPosePosition(skinnedMesh, 'neck');
   const bottom = bindPosePosition(skinnedMesh, bottomBone);
-  const spine02 = bindPosePosition(skinnedMesh, 'spine02');
-  const height = geometryHeight(mesh);
-  if (!neck || !bottom || !spine02 || height === null) {
+  if (!neck || !bottom) {
     return;
   }
+  const extents = geometryExtents(mesh);
+  if (!extents) {
+    return;
+  }
+
+  // Y scale: match target height (neck to bottom bone * heightFactor)
   const targetHeight = Math.abs(neck.y - bottom.y) * heightFactor;
-  const scale = targetHeight / height;
-  mesh.scale.setScalar(scale);
-  mesh.position.set(spine02.x, (neck.y + bottom.y) / 2, spine02.z);
+  const scaleY = targetHeight / extents.height;
+
+  let scaleX: number;
+  let scaleZ: number;
+  let centerZ: number;
+
+  if (category === 'dress') {
+    // Dress: X uses shoulders-only width (flare authored covers hips), Z uses hips depth, centerZ = hips centerZ
+    scaleX = BODY_METRICS.shouldersOnly.width / extents.width;
+    scaleZ = BODY_METRICS.hips.depth / extents.depth;
+    centerZ = BODY_METRICS.hips.centerZ;
+  } else {
+    // Top / outerwear: X uses shoulders+arms width (sleeve must cover arm), Z uses shoulders+arms depth, centerZ = shoulders+arms centerZ
+    scaleX = BODY_METRICS.shouldersArms.width / extents.width;
+    scaleZ = BODY_METRICS.shouldersArms.depth / extents.depth;
+    centerZ = BODY_METRICS.shouldersArms.centerZ;
+  }
+
+  mesh.scale.set(scaleX, scaleY, scaleZ);
+  // Position: X=0 (symmetrical), Y=midpoint neck-bottom, Z=band centerZ (NOT spine02.z)
+  mesh.position.set(0, (neck.y + bottom.y) / 2, centerZ);
 }
 
-/** Bottom: scale to the pelvis→calf span, center between the thighs on pelvis z. */
+/** Bottom: scale to hips only, center on hips centerZ. */
 function fitBottom(mesh: THREE.Mesh, skinnedMesh: THREE.SkinnedMesh): void {
   const pelvis = bindPosePosition(skinnedMesh, 'pelvis');
   const calfL = bindPosePosition(skinnedMesh, 'calf_L');
-  const thighL = bindPosePosition(skinnedMesh, 'thigh_L');
-  const thighR = bindPosePosition(skinnedMesh, 'thigh_R');
   const height = geometryHeight(mesh);
   if (!pelvis || !calfL || height === null) {
     return;
   }
+  const extents = geometryExtents(mesh);
+  if (!extents) {
+    return;
+  }
+
+  // Y scale: pelvis to calf
   const targetHeight = Math.abs(pelvis.y - calfL.y) * FIT.bottom.heightFactor + CLEARANCE;
-  const scale = targetHeight / height;
-  mesh.scale.setScalar(scale);
-  const centerX = thighL && thighR ? (thighL.x + thighR.x) / 2 : pelvis.x;
-  mesh.position.set(centerX, (pelvis.y + calfL.y) / 2, pelvis.z);
+  const scaleY = targetHeight / extents.height;
+
+  // X and Z: hips metrics only
+  const scaleX = BODY_METRICS.hips.width / extents.width;
+  const scaleZ = BODY_METRICS.hips.depth / extents.depth;
+  const centerZ = BODY_METRICS.hips.centerZ;
+
+  mesh.scale.set(scaleX, scaleY, scaleZ);
+  mesh.position.set(0, (pelvis.y + calfL.y) / 2, centerZ);
 }
 
-/** Shoes: one clone per foot, scaled to the foot→toes span and centered between them. */
+/** Shoes: one clone per foot, scaled Z to cover exactly [footZ, toesZ], centered at midpoint. */
 function fitShoe(mesh: THREE.Mesh, skinnedMesh: THREE.SkinnedMesh, side: 'L' | 'R'): void {
   const foot = bindPosePosition(skinnedMesh, `foot_${side}`);
   const toes = bindPosePosition(skinnedMesh, `toes_${side}`);
-  const length = geometryExtent(mesh, 'z');
-  if (!foot || !toes || !length) {
+  const extents = geometryExtents(mesh);
+  if (!foot || !toes || !extents) {
     return;
   }
-  const boundLength = length.max - length.min;
-  if (boundLength <= 0) {
-    return;
-  }
-  const targetLength = foot.distanceTo(toes) * FIT.shoes.heightFactor;
-  const scale = targetLength / boundLength;
-  mesh.scale.setScalar(scale);
-  mesh.position.set((foot.x + toes.x) / 2, (foot.y + toes.y) / 2, (foot.z + toes.z) / 2);
+
+  // Target Z range: exactly footZ -> toesZ (from BODY_METRICS)
+  const targetLength = BODY_METRICS.toesZ - BODY_METRICS.footZ;
+  const scaleZ = targetLength / extents.depth;
+
+  // Y scale: match foot-to-toes distance * heightFactor (proportional)
+  const footToToesDist = foot.distanceTo(toes);
+  const targetHeight = footToToesDist * FIT.shoes.heightFactor;
+  const scaleY = targetHeight / extents.height;
+
+  // X scale: use template's natural width (or could use foot distance if needed)
+  const scaleX = 1.0; // Keep template's authored width
+
+  mesh.scale.set(scaleX, scaleY, scaleZ);
+  // Center Z at midpoint of foot and toes, X at midpoint, Y at midpoint
+  mesh.position.set(
+    (foot.x + toes.x) / 2,
+    (foot.y + toes.y) / 2,
+    (BODY_METRICS.footZ + BODY_METRICS.toesZ) / 2
+  );
 }
 
 // ---------------------------------------------------------------------------
