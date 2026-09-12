@@ -1,24 +1,24 @@
 # Roupa 3D real: malhas-template por categoria (garment template meshes)
 
-- **Status:** Validated
+- **Status:** Done
 - **Branch:** task/garment-template-mesh
 - **Goal:** Peças vestidas deixam de ser imagem 2D em cilindro genérico e viram **malha 3D com silhueta real de roupa** (manga, cintura, bainha, caimento, forma de tênis). 5 GLBs-template por categoria (top/outerwear/dress/bottom/shoes), textura IA existente (`ai_texture_url`) re-mapeada no template, fit no avatar por medidas de bind-pose.
 - **Context:** Hoje `garmentShell.ts` estampa o recorte 2D transparente num `CylinderGeometry`/`BoxGeometry` com UV planar + `alphaTest` — resultado lê como adesivo no corpo (sem relevo/silhueta). Base: avatar `BaseHuman.glb` (skinned, A-pose estático, ~12k tris), bones: `neck`, `spine02`, `pelvis`, `upperarm_L/R`, `thigh_L/R`, `calf_L/R`, `foot_L/R`, `toes_L/R`. **Decisões do usuário:** (1) rota = malhas-template por categoria; (2) hosting = **bundled no app** (como BaseHuman.glb), versionado junto com OTA/APK. Backend: nenhuma mudança necessária (CPU-only, sem GPU). Debatido com @frontend e @backend; ver notas de risco no `garmentTemplate.ts` design.
 
 ## Checklist
 - [x] Nova branch `task/garment-template-mesh`
-- [ ] 5 GLBs-template (top, outerwear, dress, bottom, shoes): A-pose, bone names idênticos ao BaseHuman, ~800–1200 tris cada, origem/cena alinhada ao bind pose do avatar. Origem: Mixamo/community (Kenney/OpenGameArt/Sketchfab CC) retargetado OU autorado em Blender (armature reparent → Auto Weight → export GLB simples, 1 mesh por peça)
-- [ ] Bundle: `mobile/assets/models/garmentTemplates/{category}.glb`, carregado via `Asset.fromModule(require(...))` (mesmo padrão do BaseHuman.glb); metro.config já aceita `.glb` (assetExts)
-- [ ] `garmentTemplate.ts` novo: cache module-level dos GLB-template (promise, mesmo padrão `gltfCache`) — **ownership: geometry/material do cache é COMPARTILHADO e intocável; cada attach usa `mesh.clone()` (geometry compartilhada + clone do mesh por attach, pois 1 Object3D não pode ter 2 parents); dispose só do clone, NUNCA do cache compartilhado (mesma regra do `loadTextureCached`)**
-- [ ] Posicionamento/Scale-fit: reusar `bindPosePosition` (refs: neck/pelvis/spine02/upperarm/thigh/calf/foot/toes) p/ posicionar + escalar cada template na região certa; clearance p/ não atravessar a pele; fatores por categoria ajustáveis (constantes centralizadas)
-- [ ] UV planar overwrite no geometry do template: `u = 0.5 + localX/width`, `v = (localY - minY)/height`; **espelho de trás explícito: faces com `normal.z < 0` (espaço bind-pose) recebem `u = 1 - u`** — template fechado tem triângulos front/back distintos, regra de detecção é por normal, não "mesma técnica do shell" (shell atual não espelha nada)
-- [ ] Material: `MeshStandardMaterial` (texture cache existente), `alphaTest: 0.05`, `transparent`, `DoubleSide`, **anti z-fighting**: `depthWrite: false`, `polygonOffset: true` + `polygonOffsetFactor: -1`
-- [ ] **Ordem de render entre peças sobrepostas definida (three.js renderiza transparentes por distância): `renderOrder` crescente, maior = desenha por cima.** Cadeia: `shoes:10 < bottom:20 < top:30 < dress:40 < outerwear:50` — outerwear cobre top; dress cobre tudo exceto quando top/bottom (exclusão mútua já existe no Fitting Room), shoes por baixo de bottom (desenha primeiro)
-- [ ] `Avatar3DView.tsx`: reconciliar templates no lugar dos cylinders — mantém remove-por-nome + Promise.all de texturas + render on-demand (dirty flag); sem remount
-- [ ] **Fallback fail-open:** se template falhar ao carregar, cai pro shell cilíndrico atual (mesma filosofia "keep cutout" do restante do app)
-- [ ] `tsc --noEmit` limpo; checar AGENTS.md mobile: ler docs Expo v57 antes de codar
-- [ ] Build OTA (`scripts/publish-update.sh`) + APK (`scripts/build-apk.sh`), publicar
-- [ ] Smoke visual no device: rotacionar avatar com top+bottom+shoes; verificar silhueta real, z-fighting, fringe de alpha, fit nos ombros/cintura
+- [x] 5 GLBs-template (top, outerwear, dress, bottom, shoes): A-pose, bone names idênticos ao BaseHuman, ~800–1200 tris cada, origem/cena alinhada ao bind pose do avatar. Origem: Mixamo/community (Kenney/OpenGameArt/Sketchfab CC) retargetado OU autorado em Blender (armature reparent → Auto Weight → export GLB simples, 1 mesh por peça)
+- [x] Bundle: `mobile/assets/models/garmentTemplates/{category}.glb`, carregado via `Asset.fromModule(require(...))` (mesmo padrão do BaseHuman.glb); metro.config já aceita `.glb` (assetExts)
+- [x] `garmentTemplate.ts` novo: cache module-level dos GLB-template (promise, mesmo padrão `gltfCache`) — **ownership: geometry/material do cache é COMPARTILHADO e intocável; cada attach usa `mesh.clone()` (geometry compartilhada + clone do mesh por attach, pois 1 Object3D não pode ter 2 parents); dispose só do clone, NUNCA do cache compartilhado (mesma regra do `loadTextureCached`)**
+- [x] Posicionamento/Scale-fit: reusar `bindPosePosition` (refs: neck/pelvis/spine02/upperarm/thigh/calf/foot/toes) p/ posicionar + escalar cada template na região certa; clearance p/ não atravessar a pele; fatores por categoria ajustáveis (constantes centralizadas)
+- [x] UV planar overwrite no geometry do template: `u = 0.5 + localX/width`, `v = (localY - minY)/height`; **espelho de trás explícito: faces com `normal.z < 0` (espaço bind-pose) recebem `u = 1 - u`** — template fechado tem triângulos front/back distintos, regra de detecção é por normal, não "mesma técnica do shell" (shell atual não espelha nada)
+- [x] Material: `MeshStandardMaterial` (texture cache existente), `alphaTest: 0.05`, `transparent`, `DoubleSide`, **anti z-fighting**: `depthWrite: false`, `polygonOffset: true` + `polygonOffsetFactor: -1`
+- [x] **Ordem de render entre peças sobrepostas definida (three.js renderiza transparentes por distância): `renderOrder` crescente, maior = desenha por cima.** Cadeia: `shoes:10 < bottom:20 < top:30 < dress:40 < outerwear:50` — outerwear cobre top; dress cobre tudo exceto quando top/bottom (exclusão mútua já existe no Fitting Room), shoes por baixo de bottom (desenha primeiro)
+- [x] `Avatar3DView.tsx`: reconciliar templates no lugar dos cylinders — mantém remove-por-nome + Promise.all de texturas + render on-demand (dirty flag); sem remount
+- [x] **Fallback fail-open:** se template falhar ao carregar, cai pro shell cilíndrico atual (mesma filosofia "keep cutout" do restante do app)
+- [x] `tsc --noEmit` limpo; checar AGENTS.md mobile: ler docs Expo v57 antes de codar
+- [x] Build OTA (`scripts/publish-update.sh`) + APK (`scripts/build-apk.sh`), publicar
+- [ ] Smoke visual no device (**pendente usuário**): rotacionar avatar com top+bottom+shoes; verificar silhueta real, z-fighting, fringe de alpha, fit nos ombros/cintura
 
 ## Subtasks
 - **frontend:** modelar/adquirir + riggar os 5 templates; `garmentTemplate.ts`; integrar em `Avatar3DView`; UV rewrite; fallback; build OTA/APK
@@ -66,4 +66,14 @@
 - APK: `scripts/build-apk.sh` → `meu-guarda-roupa-1.0.4.apk` (305,273,001 bytes, versionCode 5), download 200, `/api/v1/app/latest` → `{"version":"1.0.4","version_code":5}` 200
 - Smoke manual no device: PENDENTE — itens para conferir: silhueta real top+bottom+shoes juntos; ordem/sobreposição dress×outerwear; z-fighting (depthWrite/polygonOffset); fringe de alpha nas bordas do recorte; fit de mangas/ombros/cintura das mangas na batata; se algum template falhar, conferir que cai no shell cilíndrico (fail-open)
 
-<vazio — aguardando QA>
+### 2026-09-12T06:20:00.000Z (QA)
+
+- `cd mobile && npx tsc --noEmit` → PASS (exit 0)
+- 5 GLBs re-verificados: tris dentro de 800–1200 (top 864, outerwear 1072, dress 944, bottom 1036, shoes 1016) ✓
+- `garmentTemplate.ts`: constraints do validator presentes — cache promise module-level, `mesh.clone()` por attach, dispose só do clone, espelho `normal.z < 0 → u = 1-u`, renderOrder 10/20/30/40/50, alphaTest 0.05 + depthWrite false + polygonOffset -1, fallback shell cilíndrico ✓
+- docker-compose: N/A (backend intacto, nenhum compose no repo tocado)
+- OTA manifest 200 (updateId 1d1b518f) ✓; APK 1.0.4/versionCode 5 download 200 ✓
+- RESULTADO: **PASS**
+
+### Smoke device
+PENDENTE — conferir no aparelho após OTA/APK: silhueta real top+bottom+shoes; ordem dress×outerwear; z-fighting; fringe de alpha; fit mangas/ombros/cintura/bico do tênis; fallback shell se template falhar.
