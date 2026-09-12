@@ -14,6 +14,7 @@ import { bindPosePosition, findSkinnedMesh } from './bindPose';
 import { createDecal } from './decal';
 import { readUriBytes } from './faceTexture/readUriBytes';
 import { attachGarmentShell } from './garmentShell';
+import { attachGarmentTemplate } from './garmentTemplate';
 
 const ROTATE_SPEED = 0.012;
 const CAMERA_FOV_DEGREES = 45;
@@ -288,20 +289,24 @@ export function Avatar3DView({ faceTextureUrl, equippedGarments = [] }: Avatar3D
       }
 
       const added: string[] = [];
-      // Load textures in parallel, then add shells.
+      // Load textures in parallel, then attach templates.
       const texturePromises = equippedGarments.map((g) => loadTextureCached(g.textureUrl));
       const textures = await Promise.all(texturePromises);
       if (cancelled) {
         return;
       }
-      equippedGarments.forEach((garment, index) => {
+      for (let index = 0; index < equippedGarments.length; index += 1) {
+        const garment = equippedGarments[index];
         const texture = textures[index];
         if (!texture) {
-          return;
+          continue;
         }
-        const shells = attachGarmentShell(parent, mesh, garment.category, texture);
-        shells.forEach((shell) => added.push(shell.name));
-      });
+        // Real template mesh first; if the template failed to load, fall back
+        // to the classic cylindrical shell (fail-open, never crash the scene).
+        const attached = await attachGarmentTemplate(parent, mesh, garment.category, texture);
+        const settled = attached.length > 0 ? attached : attachGarmentShell(parent, mesh, garment.category, texture);
+        settled.forEach((object) => added.push(object.name));
+      }
       garmentNamesRef.current = added;
       requestRender();
     })();
