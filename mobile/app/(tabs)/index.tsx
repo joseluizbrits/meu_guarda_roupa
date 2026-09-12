@@ -13,6 +13,7 @@ import { getMeasurements, MeasurementsResponse } from '@/src/core/api/measuremen
 import { listWardrobeItems, WardrobeCategory, WardrobeItemRead } from '@/src/core/api/wardrobe';
 import { Avatar3DView } from '@/src/features/avatar/Avatar3DView';
 import { warmTextureCache } from '@/src/features/avatar/avatarTextures';
+import { warmTemplateCache } from '@/src/features/avatar/garmentTemplate';
 
 const REGION_BY_CATEGORY: Partial<Record<WardrobeCategory, string>> = {
   top: 'upper',
@@ -44,6 +45,7 @@ export default function FittingRoomScreen() {
                 .map((item) => item.ai_texture_url ?? item.texture_url)
                 .filter((url): url is string => Boolean(url))
             );
+            warmTemplateCache();
           }
         })
         .catch(() => {});
